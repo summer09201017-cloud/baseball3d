@@ -51,8 +51,8 @@ const MOUND_Z = -17.5;
 const RELEASE = { x: 0.25, y: 1.75, z: MOUND_Z + 0.6 };
 const BASE_DIST = 19; // 壘間(縮小版球場)
 const WALL_R = 72; // 全壘打牆距離
-// 好球帶(3D):寬 0.62m、高 0.5~1.22m(07-10 使用者點名放大)
-const ZONE = { x0: -0.31, x1: 0.31, y0: 0.5, y1: 1.22 };
+// 好球帶(3D):寬 0.76m、高 0.46~1.3m(07-10 使用者兩度點名放大——畫面上要大要清楚)
+const ZONE = { x0: -0.38, x1: 0.38, y0: 0.46, y1: 1.3 };
 const ZW = ZONE.x1 - ZONE.x0, ZH = ZONE.y1 - ZONE.y0;
 // 5×5 瞄準格:內 3×3=好球帶三等分格心、外圈=引誘壞球位
 const GRID_C = [ZONE.x0 - 0.26, ZONE.x0 + ZW / 6, 0, ZONE.x1 - ZW / 6, ZONE.x1 + 0.26];
@@ -670,7 +670,8 @@ export class BaseballGame {
       if (!best || d < best.d) best = { f, d };
     }
     if (!best) return;
-    this.anims.push({ obj: best.f, from: best.f.position.clone(), to: to.clone().setY(0), t: 0, dur: Math.max(0.5, dur * 0.9), back: true });
+    this.catchFielder = best.f; // 接殺瞬間要舉手接住(球結束在他手套位)
+    this.anims.push({ obj: best.f, from: best.f.position.clone(), to: to.clone().setY(0), t: 0, dur: Math.max(0.5, dur * 0.85), back: true });
   }
 
   // 沒揮棒:過本壘=主審宣判
@@ -889,6 +890,7 @@ export class BaseballGame {
             this.balls = 0; this.strikes = 0;
           } else if (ty === "flyout") {
             this.ballMesh.visible = false; // 進了野手手套
+            this._catchPoseT = 0.7; // 野手舉手接住(頭上/手套位)
             this.emit("flyout", {});
             this.balls = 0; this.strikes = 0;
             if (this.inningsMode()) this.registerOut();
@@ -981,6 +983,18 @@ export class BaseballGame {
       // 投手投球抬手
       const throwing = this.phase === "pitching" && this.ball && this.ball.t < 0.3;
       this.pitcherMesh.userData.armR.rotation.x = throwing ? -2.4 : 0;
+      // 接殺野手舉手接球
+      if (this._catchPoseT > 0) {
+        this._catchPoseT -= dt;
+        if (this.catchFielder) {
+          this.catchFielder.userData.armR.rotation.x = -2.8;
+          this.catchFielder.userData.armL.rotation.x = -2.8;
+          if (this._catchPoseT <= 0) {
+            this.catchFielder.userData.armR.rotation.x = 0;
+            this.catchFielder.userData.armL.rotation.x = 0;
+          }
+        }
+      }
       // 準星(人投球時)
       const aiming = this.phase === "ready" && this.humanPitching();
       this.crosshair.visible = aiming;
