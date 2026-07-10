@@ -23,11 +23,11 @@ export const DIFFICULTY_LABELS = {
 // window=時機窗倍率(越大越好打);durMul=球速倍率(越大越慢);ballRate=AI 投手壞球率;
 // kinds=AI 投手會用的球種;aiBat=AI 打者(你投球時):chase 追打壞球率、swing 好球出棒率、dist 結果分布
 export const DIFFICULTY_PRESETS = {
-  kids:   { window: 2.0,  durMul: 1.3,  ballRate: 0.18, kinds: ["slow"],                                     aiBat: { chase: 0.4,  swing: 0.82, dist: { homer: 0.08, hit: 0.24, foul: 0.34 } } },
-  child:  { window: 1.45, durMul: 1.15, ballRate: 0.25, kinds: ["slow", "fast"],                              aiBat: { chase: 0.3,  swing: 0.88, dist: { homer: 0.12, hit: 0.3,  foul: 0.32 } } },
-  easy:   { window: 1.12, durMul: 1.05, ballRate: 0.3,  kinds: ["fast", "slow", "curve"],                     aiBat: { chase: 0.22, swing: 0.92, dist: { homer: 0.16, hit: 0.34, foul: 0.3 } } },
-  normal: { window: 0.9,  durMul: 1.0,  ballRate: 0.32, kinds: ["fast", "slow", "curve", "slider"],           aiBat: { chase: 0.16, swing: 0.95, dist: { homer: 0.2,  hit: 0.36, foul: 0.28 } } },
-  hard:   { window: 0.72, durMul: 0.92, ballRate: 0.35, kinds: ["fast", "slow", "curve", "slider", "sinker"], aiBat: { chase: 0.1,  swing: 0.97, dist: { homer: 0.26, hit: 0.38, foul: 0.24 } } },
+  kids:   { window: 2.2,  durMul: 1.35,  ballRate: 0.18, kinds: ["slow"],                                     aiBat: { chase: 0.4,  swing: 0.82, dist: { homer: 0.08, hit: 0.24, foul: 0.34 } } },
+  child:  { window: 1.7,  durMul: 1.2, ballRate: 0.25, kinds: ["slow", "fast"],                              aiBat: { chase: 0.3,  swing: 0.88, dist: { homer: 0.12, hit: 0.3,  foul: 0.32 } } },
+  easy:   { window: 1.35, durMul: 1.1, ballRate: 0.3,  kinds: ["fast", "slow", "curve"],                     aiBat: { chase: 0.22, swing: 0.92, dist: { homer: 0.16, hit: 0.34, foul: 0.3 } } },
+  normal: { window: 1.0,  durMul: 1.0,  ballRate: 0.32, kinds: ["fast", "slow", "curve", "slider"],           aiBat: { chase: 0.16, swing: 0.95, dist: { homer: 0.2,  hit: 0.36, foul: 0.28 } } },
+  hard:   { window: 0.8,  durMul: 0.92, ballRate: 0.35, kinds: ["fast", "slow", "curve", "slider", "sinker"], aiBat: { chase: 0.1,  swing: 0.97, dist: { homer: 0.26, hit: 0.38, foul: 0.24 } } },
 };
 
 // dur=飛行秒數;brkX/brkY=途中彎折幅度(公尺);late=快到本壘才折(滑球/伸卡難讀)
@@ -59,8 +59,8 @@ const GRID_C = [ZONE.x0 - 0.26, ZONE.x0 + ZW / 6, 0, ZONE.x1 - ZW / 6, ZONE.x1 +
 const GRID_R = [ZONE.y1 + 0.26, ZONE.y1 - ZH / 6, (ZONE.y0 + ZONE.y1) / 2, ZONE.y0 + ZH / 6, ZONE.y0 - 0.26];
 const COL_LABEL = ["⬅⬅ 左壞球", "左格", "中格", "右格", "➡➡ 右壞球"];
 const ROW_LABEL = ["⬆⬆ 高壞球", "上格", "中格", "下格", "⬇⬇ 低壞球"];
-// 時機窗(秒,乘 difficulty.window;07-10 使用者回報太好打,整體收緊)
-const WIN = { perfect: 0.062, good: 0.15 };
+// 時機窗(秒,乘 difficulty.window;07-10 二調:先嫌太好打、後嫌入門打不到——落在中間)
+const WIN = { perfect: 0.08, good: 0.19 };
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -574,7 +574,7 @@ export class BaseballGame {
     let outcome;
     if (adt <= w.perfect) outcome = "homer";
     else if (adt <= w.good * 0.6) outcome = "hit";
-    else if (adt <= w.good) outcome = Math.random() < 0.4 ? "hit" : "flyout"; // 邊緣接觸:六成被接殺(07-10 加難)
+    else if (adt <= w.good) outcome = Math.random() < 0.5 ? "hit" : "flyout"; // 邊緣接觸:一半被接殺
     else if (adt <= w.good * 1.9) outcome = "foul";
     else outcome = "whiff";
     // 追打壞球:打不好(全壘打降級、安打半數變接殺)
@@ -633,18 +633,35 @@ export class BaseballGame {
     this.pushHud();
   }
 
-  // 先擲命運,再演軌跡:打出去的球飛向落點;接殺=最近野手跑去接
+  // 先擲命運,再演軌跡——★判定=畫面(07-10 使用者回報根治):
+  //   接殺的球「一定飛向某個野手身上」(手套高度空中被接走);
+  //   安打的球「一定落在守備空檔」(離所有野手 ≥6m 的草地)。
   launchHit(from, type) {
-    const angle = rand(-Math.PI / 4 + 0.12, Math.PI / 4 - 0.12); // 界內扇形
-    let dist, peak;
-    if (type === "homer") { dist = rand(WALL_R + 6, WALL_R + 20); peak = rand(16, 24); }
-    else if (type === "triple") { dist = rand(58, 68); peak = rand(9, 13); }
-    else if (type === "double") { dist = rand(44, 58); peak = rand(7, 11); }
-    else if (type === "single") { dist = rand(24, 40); peak = rand(4, 8); }
-    else { dist = rand(26, 52); peak = rand(10, 15); } // flyout 高飛
-    // 接殺球的終點=野手手套高度(空中被接走,絕不落地);安打/全壘打照常落地/出牆
-    const endY = type === "flyout" ? 1.15 : 0.2;
-    const to = new THREE.Vector3(Math.sin(angle) * dist, endY, -Math.cos(angle) * dist);
+    let to, dist, peak;
+    if (type === "flyout") {
+      // 挑一個野手,球就朝他飛(微小偏移,他墊一步接住)
+      const f = pickFrom(this.fielders);
+      const home = f.userData.home;
+      to = new THREE.Vector3(home.x + rand(-1.2, 1.2), 1.15, home.z + rand(-1.2, 1.2));
+      dist = Math.hypot(to.x, to.z);
+      peak = rand(10, 15);
+    } else {
+      let angle = 0; dist = 30;
+      if (type === "homer") { dist = rand(WALL_R + 6, WALL_R + 20); peak = rand(16, 24); }
+      else if (type === "triple") { dist = rand(58, 68); peak = rand(9, 13); }
+      else if (type === "double") { dist = rand(44, 58); peak = rand(7, 11); }
+      else { dist = rand(24, 40); peak = rand(4, 8); }
+      // 安打落點避開野手(最多取樣 10 次,挑離最近野手最遠的點)
+      let best = null;
+      for (let i = 0; i < 10; i++) {
+        angle = rand(-Math.PI / 4 + 0.12, Math.PI / 4 - 0.12);
+        const cand = new THREE.Vector3(Math.sin(angle) * dist, 0.2, -Math.cos(angle) * dist);
+        const nearest = Math.min(...this.fielders.map((f) => Math.hypot(f.position.x - cand.x, f.position.z - cand.z)));
+        if (!best || nearest > best.nearest) best = { cand, nearest };
+        if (type !== "homer" && nearest >= 6) { best = { cand, nearest }; break; }
+      }
+      to = best.cand;
+    }
     this.hitFly = { from: from.clone(), to, t: 0, dur: clamp(dist / 34, 0.9, 2.0), peak, type };
     this.phase = "result";
     this.resultT = this.hitFly.dur + (type === "homer" ? 1.4 : 1.0);
