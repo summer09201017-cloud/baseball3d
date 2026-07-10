@@ -345,22 +345,45 @@ export class BaseballGame {
 
     // 打者(站左打擊區,面向投手 -z;球棒)
     this.batterMesh = this.makePerson(0x2a5ac8, { faceDir: -1 });
+    this.batSide = 1; // 1=右打區(畫面右)/-1=左打區——每個打席隨機(07-10 使用者點名要有左打者)
     this.batterMesh.position.set(1.1, 0, 0.35);
     this.batterMesh.rotation.y = Math.PI * 0.08;
-    this.bat = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.035, 0.055, 1.05, 10),
-      new THREE.MeshStandardMaterial({ color: 0xc8a060, roughness: 0.6 }),
-    );
+    // 真棒形球棒(07-10 使用者點名):尾鈕→細握把→漸粗棒身→圓頭;握把纏帶深色
+    this.bat = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0xd2a565, roughness: 0.55 });
+    const grip = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 0.85 });
+    const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.03, 12), grip);
+    knob.position.y = 0.015;
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.03, 0.34, 12), grip);
+    handle.position.y = 0.2;
+    const taper = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.03, 0.38, 12), wood);
+    taper.position.y = 0.56;
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.056, 0.34, 12), wood);
+    barrel.position.y = 0.92;
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.062, 12, 8), wood);
+    tip.position.y = 1.09;
+    this.bat.add(knob, handle, taper, barrel, tip);
     this.batPivot = new THREE.Group();
     this.batPivot.position.set(-0.28, 1.0, 0);
-    this.bat.position.y = 0.5;
     this.batPivot.add(this.bat);
     this.batPivot.rotation.z = -0.5;
     this.batPivot.rotation.x = 0.3;
     this.batterMesh.add(this.batPivot);
     this.scene.add(this.batterMesh);
     this.swingT = 0;
+    this.buildDefense();
+  }
 
+  // 套用打擊區(左/右打):站位、面向、球棒位置鏡像
+  applyBatSide(side) {
+    this.batSide = side;
+    this.batterMesh.position.set(1.1 * side, 0, 0.35);
+    this.batterMesh.rotation.y = Math.PI * 0.08 * side;
+    this.batPivot.position.x = -0.28 * side;
+    this.batPivot.rotation.z = -0.5 * side;
+  }
+
+  buildDefense() {
     // 捕手(蹲在本壘後,面向投手;盜壘時由他長傳封殺——07-10 使用者點名)
     this.catcherMesh = this.makePerson(0xc83a3a, { faceDir: -1, scale: 0.95 });
     this.catcherMesh.scale.y = 0.68; // 蹲捕
@@ -487,6 +510,7 @@ export class BaseballGame {
   startMatch() {
     this.resetMatchState();
     this.setTeamColors();
+    this.applyBatSide(Math.random() < 0.5 ? 1 : -1);
     this.phase = "ready";
     this.pitchKindIdx = 0;
     this.aimRow = 2; this.aimCol = 2;
@@ -615,7 +639,7 @@ export class BaseballGame {
     }
     if (outcome === "whiff") {
       // 揮空:立刻揮棒,球繼續飛進捕手(result 階段續飛)
-      this.swingT = 0.32;
+      this.swingT = 0.18;
       this.resolveSwing(outcome);
     } else {
       // ★接觸類(全壘打/安打/接殺/界外):等球「真的到本壘九宮格」那一刻才揮棒+起飛
@@ -629,7 +653,7 @@ export class BaseballGame {
   contactNow() {
     const b = this.ball;
     if (!b || !b.pendingOutcome) return;
-    this.swingT = 0.32;
+    this.swingT = 0.18;
     b.t = b.dur; // 對齊接觸點=選定落點(九宮格上)
     this.resolveSwing(b.pendingOutcome);
   }
@@ -1026,6 +1050,8 @@ export class BaseballGame {
     // 球數制模式結束判定
     if (!this.inningsMode() && this.pitchCount >= (this.pitchLimit || this.mode.pitches)) return this.finishMatch();
     this.phase = "ready";
+    // 新打席(球數歸零)=打者可能換打擊區(左打/右打隨機)
+    if (this.balls === 0 && this.strikes === 0) this.applyBatSide(Math.random() < 0.5 ? 1 : -1);
     if (!this.humanPitching()) this.aiT = rand(1.0, 1.9);
     // AI 打擊方(投球挑戰/短場下半):偶爾指揮盜壘
     if (!this.humanBatting() && this.runners.length && Math.random() < 0.16) this.aiStealT = rand(0.4, 1.0);
@@ -1082,9 +1108,17 @@ export class BaseballGame {
         this.ballMesh.position.copy(pos);
         this.ballMesh.visible = f.t < f.dur + 0.5;
       }
-      // 揮棒動畫
-      this.batPivot.rotation.y = this.swingT > 0 ? -((0.32 - this.swingT) / 0.32) * 2.4 : 0;
-      this.batPivot.rotation.z = this.swingT > 0 ? -1.35 : -0.5;
+      // 揮棒動畫(0.18s 快揮,前段吃掉大部分角度;左右打鏡像)
+      const sSide = this.batSide || 1;
+      if (this.swingT > 0) {
+        const k = 1 - this.swingT / 0.18;
+        const ease = 1 - Math.pow(1 - k, 2);
+        this.batPivot.rotation.y = -ease * 2.6 * sSide;
+        this.batPivot.rotation.z = -1.35 * sSide;
+      } else {
+        this.batPivot.rotation.y = 0;
+        this.batPivot.rotation.z = -0.5 * sSide;
+      }
       // 投手投球抬手
       const throwing = this.phase === "pitching" && this.ball && this.ball.t < 0.3;
       this.pitcherMesh.userData.armR.rotation.x = throwing ? -2.4 : 0;

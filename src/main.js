@@ -103,10 +103,12 @@ function handleGameEvent(event) {
       break;
     case "foul":
       audio.batCrack();
+      audio.crowdCheer(0.35);
       pushCommentary(pick(["擦棒界外!", "打到了,可惜偏出界外!", "界外球,再來!"]));
       break;
     case "whiff":
       audio.buzz();
+      audio.crowdCheer(0.3);
       pushCommentary(pick(["大棒一揮——落空!", "揮棒落空!", "球從棒下溜過去了!"]));
       break;
     case "walk":
@@ -145,6 +147,8 @@ function handleGameEvent(event) {
       break;
     case "flyout":
       audio.catchPop();
+      audio.crowdCheer(0.7);
+      game.cheerCrowd(0.7);
       pushCommentary(pick(["高飛球——被接殺了!", "野手站好位置,接殺出局!", "可惜,正面高飛球被沒收!"]), batting === "home" ? "cool" : "hot");
       break;
     case "run":
@@ -153,10 +157,12 @@ function handleGameEvent(event) {
       pushCommentary(`跑者回本壘得分!目前 ${event.homeScore} 比 ${event.awayScore}!`, tone, "跑者回本壘得分!");
       break;
     case "steal-go":
+      audio.crowdCheer(0.55);
       pushCommentary(`跑者起跑——要盜${["一", "二", "三"][event.toBase - 1]}壘!`, tone, "跑者起跑,要盜壘了!");
       break;
     case "catcher-throw":
       audio.pitchWhoosh();
+      audio.crowdCheer(0.45);
       pushCommentary('捕手長傳' + ['一','二','三'][event.toBase - 1] + '壘!', batting === 'home' ? 'cool' : 'hot', '');
       break;
     case "steal-safe":
@@ -171,6 +177,8 @@ function handleGameEvent(event) {
       break;
     case "half":
       audio.catchPop();
+      audio.crowdCheer(0.6);
+      audio.crowdChant();
       pushCommentary(`${event.text},攻守交換!`, "info", "攻守交換!");
       break;
     case "match-end":

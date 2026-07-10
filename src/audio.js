@@ -93,7 +93,7 @@ export class AudioManager {
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass"; lp.frequency.value = 620; lp.Q.value = 0.4;
     const g = ctx.createGain();
-    g.gain.value = 0.05;
+    g.gain.value = 0.09;
     src.connect(lp); lp.connect(g); g.connect(this.masterGain);
     src.start();
     this._crowd = { src, gain: g };
@@ -113,13 +113,13 @@ export class AudioManager {
       const g = this._crowd.gain.gain;
       const now = ctx.currentTime;
       g.cancelScheduledValues(now);
-      g.setValueAtTime(Math.max(0.05, g.value), now);
-      g.linearRampToValueAtTime(0.05 + 0.2 * strength, now + 0.12);
-      g.exponentialRampToValueAtTime(0.05, now + 1.9);
+      g.setValueAtTime(Math.max(0.09, g.value), now);
+      g.linearRampToValueAtTime(0.09 + 0.34 * strength, now + 0.1);
+      g.exponentialRampToValueAtTime(0.09, now + 2.6);
     }
     // 零星拍手(短噪音爆)
     const buf = this.makeNoiseBuffer();
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 10; i++) {
       const src = ctx.createBufferSource();
       src.buffer = buf;
       const hp = ctx.createBiquadFilter();
@@ -127,7 +127,7 @@ export class AudioManager {
       const g2 = ctx.createGain();
       const t0 = ctx.currentTime + Math.random() * 0.6;
       g2.gain.setValueAtTime(0.0001, t0);
-      g2.gain.exponentialRampToValueAtTime(0.07 * strength, t0 + 0.01);
+      g2.gain.exponentialRampToValueAtTime(0.1 * strength, t0 + 0.01);
       g2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.06);
       src.connect(hp); hp.connect(g2); g2.connect(this.masterGain);
       src.start(t0); src.stop(t0 + 0.1);
