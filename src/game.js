@@ -673,7 +673,7 @@ export class BaseballGame {
     }
     if (outcome === "whiff") {
       // 揮空:立刻揮棒但掃高/掃低錯過球(視覺自解釋),球繼續飛進捕手
-      this.swingT = 0.18;
+      this.swingT = 0.13;
       this.swingPlaneY = clamp(b.ty + (Math.random() < 0.5 ? -0.3 : 0.3), 0.35, 1.55);
       this.resolveSwing(outcome);
     } else {
@@ -689,9 +689,9 @@ export class BaseballGame {
     const b = this.ball;
     if (!b || !b.pendingOutcome || b.contactScheduled) return;
     b.contactScheduled = true;
-    this.swingT = 0.18;
+    this.swingT = 0.13;
     this.swingPlaneY = clamp(b.ty, 0.4, 1.4);
-    this._contactDelay = 0.08; // 棒頭掃到九宮格的時間差(球此刻停在格上等棒子)
+    this._contactDelay = 0.06; // 棒頭掃到九宮格的時間差(球此刻停在格上等棒子)
   }
 
   resolveSwing(outcome) {
@@ -755,6 +755,16 @@ export class BaseballGame {
       to = best.cand;
     }
     this.hitFly = { from: from.clone(), to, t: 0, dur: clamp(dist / 34, 0.9, 2.0), peak, type };
+    // 安打落地後續滾一段(減速),直到附近野手追上撿起(07-10 使用者點名)
+    if (type === "single" || type === "double" || type === "triple") {
+      const dir = new THREE.Vector3(to.x - from.x, 0, to.z - from.z).normalize();
+      const maxRoll = Math.max(1.2, WALL_R - 4 - Math.hypot(to.x, to.z)); // 不滾出全壘打牆
+      const rollDist = Math.min(rand(5, 9), maxRoll);
+      const roll = { dir, dist: rollDist, dur: clamp(rollDist / 4, 0.8, 2.2) };
+      this.hitFly.roll = roll;
+      const rollEnd = to.clone().addScaledVector(dir, rollDist).setY(0);
+      this.sendFielder(rollEnd, this.hitFly.dur + roll.dur, () => { if (this.hitFly && this.hitFly.roll) this.hitFly._fielderArrived = true; });
+    }
     this.phase = "result";
     this.resultT = this.hitFly.dur + (type === "homer" ? 1.4 : 1.0);
     if (type === "flyout") this.sendFielder(to, this.hitFly.dur);
@@ -772,7 +782,7 @@ export class BaseballGame {
     this.resultT = 1.4;
   }
 
-  sendFielder(to, dur) {
+  sendFielder(to, dur, onDone) {
     let best = null;
     for (const f of this.fielders) {
       const d = f.position.distanceTo(to);
@@ -780,7 +790,7 @@ export class BaseballGame {
     }
     if (!best) return;
     this.catchFielder = best.f; // 接殺瞬間要舉手接住(球結束在他手套位)
-    this.anims.push({ obj: best.f, from: best.f.position.clone(), to: to.clone().setY(0), t: 0, dur: Math.max(0.5, dur * 0.85), back: true });
+    this.anims.push({ obj: best.f, from: best.f.position.clone(), to: to.clone().setY(0), t: 0, dur: Math.max(0.5, dur * 0.85), back: true, onDone });
   }
 
   // 沒揮棒:過本壘=主審宣判
@@ -1060,10 +1070,18 @@ export class BaseballGame {
           this.pushHud();
         }
       }
+      // 滾地球撿起:野手到位+球滾近尾段=撿球(球進手、收壘姿勢),他再走回守位
+      const hf = this.hitFly;
+      if (hf && hf.roll && !hf.pickedUp && hf._fielderArrived && hf.t >= hf.dur + hf.roll.dur * 0.7) {
+        hf.pickedUp = true;
+        this.ballMesh.visible = false;
+        this._catchPoseT = 0.6;
+      }
       this.resultT -= dt;
       // ★07-10 使用者回報 bug:安打/全壘打後跑者還在跑,投手就投下一球——
-      //   跑壘動畫(path 動畫)與盜壘沒收完前,不進下一球(投手等待)。
-      const runnersStillRunning = this.anims.some((a) => a.path && !a.finished) || this.stealing;
+      //   跑壘動畫(path 動畫)與盜壘沒收完前,不進下一球(投手等待);滾地球沒撿起前也不進。
+      const ballLoose = this.hitFly && this.hitFly.roll && !this.hitFly.pickedUp;
+      const runnersStillRunning = this.anims.some((a) => a.path && !a.finished) || this.stealing || ballLoose;
       if (this.resultT <= 0 && !runnersStillRunning) this.endOfPlay();
     }
   }
@@ -1149,15 +1167,21 @@ export class BaseballGame {
         const k = clamp(f.t / f.dur, 0, 1);
         const pos = new THREE.Vector3().lerpVectors(f.from, f.to, k);
         pos.y += Math.sin(k * Math.PI) * f.peak;
+        if (f.roll && f.t > f.dur) {
+          // 落地滾動:減速滾一段,貼地(等野手來撿)
+          const rk = clamp((f.t - f.dur) / f.roll.dur, 0, 1);
+          const e = 1 - Math.pow(1 - rk, 2);
+          pos.set(f.to.x, 0.16, f.to.z).addScaledVector(f.roll.dir, f.roll.dist * e);
+        }
         this.ballMesh.position.copy(pos);
-        this.ballMesh.visible = f.t < f.dur + 0.5;
+        this.ballMesh.visible = !f.pickedUp && (f.roll ? true : f.t < f.dur + 0.5);
       }
       // 揮棒動畫:水平大迴旋掃過九宮格平面(與好球帶成 90°),棒頭經過球的落點格
       const sSide = this.batSide || 1;
       const bm = this.batterMesh.position;
       const UPv = new THREE.Vector3(0, 1, 0);
       if (this.swingT > 0) {
-        const k = 1 - this.swingT / 0.18;
+        const k = 1 - this.swingT / 0.13;
         const ease = 1 - Math.pow(1 - k, 2);
         const beta = sSide * (1.45 - 4.36 * ease); // 從身後掃到跟前(掃過本壘方向)
         const dir = new THREE.Vector3(Math.sin(beta), 0.05, Math.cos(beta)).normalize();
