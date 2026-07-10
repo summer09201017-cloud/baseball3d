@@ -69,6 +69,14 @@ const pickFrom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 // 兩個鏡位:主審近景(投打)/全場高景(打出去、盜壘、跑壘——看得到四壘包+內外野守備+全壘打牆)
 const PLATE_CAM = { pos: new THREE.Vector3(0, 2.3, 3.5), look: new THREE.Vector3(0, 1.05, -12) };
 const FIELD_CAM = { pos: new THREE.Vector3(0, 16.5, 17), look: new THREE.Vector3(0, 0, -26) };
+// 視角三檔(07-11 使用者拍板):投球半局可 V 切;打擊半局鎖主審(球飛向你才抓得準時機)
+const PITCHER_CAM = { pos: new THREE.Vector3(0.9, 2.35, -21.3), look: new THREE.Vector3(0, 1.0, 0.6) };
+const TOP_CAM = { pos: new THREE.Vector3(0, 33, -7.5), look: new THREE.Vector3(0, 0, -17) };
+const CAM_VIEWS = [
+  { cam: PLATE_CAM, name: "主審視角" },
+  { cam: PITCHER_CAM, name: "投手肩後視角" },
+  { cam: TOP_CAM, name: "高空俯瞰" },
+];
 
 export class BaseballGame {
   constructor({ canvas }) {
@@ -99,6 +107,12 @@ export class BaseballGame {
     this.camera.position.set(0, 2.3, 3.5);
     this.camera.lookAt(0, 1.05, -12);
     this.cameraShake = 0;
+    // 視角檔(0=主審 1=投手肩後 2=高空俯瞰);記 localStorage 下次沿用
+    this.camView = 0;
+    try {
+      const saved = Number(localStorage.getItem("bb3d-camview"));
+      if ([0, 1, 2].includes(saved)) this.camView = saved;
+    } catch { /* 私密模式等 */ }
 
     const hemi = new THREE.HemisphereLight(0xcfe4ff, 0x27401f, 1.05);
     this.scene.add(hemi);
@@ -633,6 +647,17 @@ export class BaseballGame {
       }
     } else this.aiPlan = null;
     this.pushHud();
+  }
+
+  // V 鍵/按鈕循環視角:打擊半局鎖主審(玩法根基),投球/AI 打擊半局三檔任切
+  cycleCamView() {
+    if (this.humanBatting()) {
+      this.emit("status", { text: "打擊半局固定主審視角——球飛向你才抓得準時機!" });
+      return;
+    }
+    this.camView = (this.camView + 1) % CAM_VIEWS.length;
+    try { localStorage.setItem("bb3d-camview", String(this.camView)); } catch { /* ignore */ }
+    this.emit("status", { text: `視角切換:${CAM_VIEWS[this.camView].name}。` });
   }
 
   windows() {
@@ -1217,13 +1242,16 @@ export class BaseballGame {
       const aiming = this.phase === "ready" && this.humanPitching();
       this.crosshair.visible = aiming;
       if (aiming) this.crosshair.position.set(GRID_C[this.aimCol], GRID_R[this.aimRow], 0.02);
-      // ★雙鏡位:投打=主審近景;打出去/盜壘/跑者移動=拉高看全場(四壘包+守備+全壘打牆)
+      // ★鏡位:打擊半局=主審近景(鎖定);投球半局=玩家選的視角檔;
+      //   打出去/盜壘/跑者移動=拉高看全場(俯瞰檔的人維持俯瞰,本來就看得到全場)
       const fairFly = this.hitFly && this.hitFly.type !== "foul";
       const runnersMoving = this.anims.some((a) => a.path) || this.stealing;
       const wantField = fairFly || runnersMoving;
+      const viewCam = this.humanBatting() ? PLATE_CAM : CAM_VIEWS[this.camView].cam;
       if (!this._camPos) { this._camPos = PLATE_CAM.pos.clone(); this._camLook = PLATE_CAM.look.clone(); }
-      const targetPos = wantField ? FIELD_CAM.pos : PLATE_CAM.pos;
-      const targetLook = wantField ? FIELD_CAM.look : PLATE_CAM.look;
+      const fieldCam = this.camView === 2 && !this.humanBatting() ? TOP_CAM : FIELD_CAM;
+      const targetPos = wantField ? fieldCam.pos : viewCam.pos;
+      const targetLook = wantField ? fieldCam.look : viewCam.look;
       const k = 1 - Math.exp(-dt * 2.6);
       this._camPos.lerp(targetPos, k);
       this._camLook.lerp(targetLook, k);

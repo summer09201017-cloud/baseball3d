@@ -175,6 +175,9 @@ function handleGameEvent(event) {
       audio.buzz();
       pushCommentary(pick([`傳球到位——盜壘失敗,出局!`, `被抓到了!盜壘出局!`]), batting === "home" ? "cool" : "hot");
       break;
+    case "status":
+      pushCommentary(event.text, "info", "");
+      break;
     case "half":
       audio.catchPop();
       audio.crowdCheer(0.6);
@@ -306,6 +309,7 @@ window.addEventListener("keydown", (e) => {
   }
   if (e.code === "Enter" && !e.repeat) game.swing(); // 打者(對決 P1/雙人打擊方)
   if (e.code === "KeyE" && !e.repeat && game.humanBatting()) game.attemptSteal();
+  if (e.code === "KeyV" && !e.repeat) game.cycleCamView();
   if (humanPitching && game.phase === "ready") {
     if (e.code === "KeyW" || e.code === "ArrowUp") game.moveAim(-1, 0);
     if (e.code === "KeyS" || e.code === "ArrowDown") game.moveAim(1, 0);
@@ -317,6 +321,10 @@ window.addEventListener("keydown", (e) => {
 });
 
 // ── 操作:觸控/滑鼠 ──
+document.getElementById("cameraButton").addEventListener("click", () => {
+  game.cycleCamView();
+});
+
 ui.touchAction.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   audio.unlock();
