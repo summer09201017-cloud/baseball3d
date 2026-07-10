@@ -214,15 +214,16 @@ export class BaseballGame {
     const crowdColors = [0xffd24a, 0xe05040, 0x38a9ff, 0x5ad06a, 0xf2d8b0, 0xd7a6ff, 0xff9a62];
     const crowdGeo = new THREE.SphereGeometry(0.55, 6, 6);
     const crowdMat = new THREE.MeshStandardMaterial({ roughness: 0.9 });
-    const N_CROWD = 420;
+    const N_CROWD = 540;
     const crowd = new THREE.InstancedMesh(crowdGeo, crowdMat, N_CROWD);
     const m4 = new THREE.Matrix4();
     for (let i = 0; i < N_CROWD; i++) {
       const tier = i % 3;
       const r = WALL_R + 3 + tier * 4 + rand(-0.8, 0.8);
-      const ang = Math.PI * (0.75 + rand(0, 0.5)); // 牆後扇形
-      const x = Math.cos(ang) * r;
-      const z = Math.sin(ang) * -r;
+      // 左中右鋪滿:方位角 -43°~+43°(0=正中外野),與球場方位同一套參數(07-10 使用者點名)
+      const phi = rand(-Math.PI / 4 * 0.95, Math.PI / 4 * 0.95);
+      const x = Math.sin(phi) * r;
+      const z = -Math.cos(phi) * r;
       const y = 4.1 + tier * 2.4 + rand(-0.2, 0.2);
       m4.setPosition(x, y, z);
       crowd.setMatrixAt(i, m4);
@@ -240,14 +241,14 @@ export class BaseballGame {
     this.sbCtx = this.sbCanvas.getContext("2d");
     this.sbTexture = new THREE.CanvasTexture(this.sbCanvas);
     const sbMat = new THREE.MeshBasicMaterial({ map: this.sbTexture });
-    const sb = new THREE.Mesh(new THREE.PlaneGeometry(34, 12.75), sbMat);
-    sb.position.set(0, 13.5, -88);
+    const sb = new THREE.Mesh(new THREE.PlaneGeometry(46, 17.25), sbMat); // 07-10 使用者點名再放大
+    sb.position.set(0, 16, -88);
     this.scene.add(sb);
     const sbPole = new THREE.Mesh(
       new THREE.BoxGeometry(1.2, 8, 1.2),
       new THREE.MeshStandardMaterial({ color: 0x3a4255 }),
     );
-    sbPole.position.set(0, 4, -88.5);
+    sbPole.position.set(0, 5, -88.5);
     this.scene.add(sbPole);
 
     // 夜賽燈塔(裝飾)
@@ -844,9 +845,12 @@ export class BaseballGame {
     const runnerDur = BASE_DIST / 7.5;
     this.stealing = { runner: lead, to, t: 0, safe, runnerDur, throwStarted: false, resolved: false };
     this.animateRunner({ mesh: lead.mesh, base: lead.base }, to, 7.5);
-    // 守壘野手補位到壘包接傳球(二壘=二壘手/三壘=三壘手)
+    // 守壘野手補位到壘包【留守阻殺】(07-10 使用者點名:必須待在壘上等球觸殺,判完才歸位)
     const cover = this.fielders[to === 1 ? 1 : 3];
-    if (cover) this.anims.push({ obj: cover, from: cover.position.clone(), to: this.basePos[to].clone().setY(0), t: 0, dur: Math.max(0.4, runnerDur * 0.55), back: true });
+    if (cover) {
+      this.stealCover = cover;
+      this.anims.push({ obj: cover, from: cover.position.clone(), to: this.basePos[to].clone().setY(0), t: 0, dur: Math.max(0.4, runnerDur * 0.5) });
+    }
     this.emit("steal-go", { toBase: to + 1 });
     this.pushHud();
     return true;
@@ -868,6 +872,7 @@ export class BaseballGame {
     }
     this.stealing = null;
     this.stealBallLinger = 0.6; // 傳到壘包的球停一下再收
+    this._coverReturnT = 0.8; // 留守野手觸殺完才走回守位
     this.pushHud();
   }
 
@@ -922,10 +927,22 @@ export class BaseballGame {
     }
     if (this.stealThrow) {
       this.stealThrow.t += dt;
+      if (!this.stealThrow.caught && this.stealThrow.t >= this.stealThrow.dur) {
+        this.stealThrow.caught = true;
+        if (this.stealCover) { this.catchFielder = this.stealCover; this._catchPoseT = 0.7; } // 壘上接球+觸殺
+      }
     }
     if (this.stealBallLinger > 0) {
       this.stealBallLinger -= dt;
       if (this.stealBallLinger <= 0) this.stealThrow = null;
+    }
+    if (this._coverReturnT > 0) {
+      this._coverReturnT -= dt;
+      if (this._coverReturnT <= 0 && this.stealCover) {
+        const cv = this.stealCover;
+        this.anims.push({ obj: cv, from: cv.position.clone(), to: cv.userData.home.clone(), t: 0, dur: 1.4 });
+        this.stealCover = null;
+      }
     }
     // AI 打擊方偶爾發動盜壘
     if (this.aiStealT > 0) {
