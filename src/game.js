@@ -23,11 +23,11 @@ export const DIFFICULTY_LABELS = {
 // window=時機窗倍率(越大越好打);durMul=球速倍率(越大越慢);ballRate=AI 投手壞球率;
 // kinds=AI 投手會用的球種;aiBat=AI 打者(你投球時):chase 追打壞球率、swing 好球出棒率、dist 結果分布
 export const DIFFICULTY_PRESETS = {
-  kids:   { window: 2.2,  durMul: 1.35,  ballRate: 0.18, kinds: ["slow"],                                     aiBat: { chase: 0.4,  swing: 0.82, dist: { homer: 0.02, hit: 0.2,  foul: 0.34 } } },
-  child:  { window: 1.7,  durMul: 1.2, ballRate: 0.25, kinds: ["slow", "fast"],                              aiBat: { chase: 0.3,  swing: 0.88, dist: { homer: 0.03, hit: 0.25, foul: 0.32 } } },
-  easy:   { window: 1.35, durMul: 1.1, ballRate: 0.3,  kinds: ["fast", "slow", "curve"],                     aiBat: { chase: 0.22, swing: 0.92, dist: { homer: 0.05, hit: 0.28, foul: 0.3 } } },
-  normal: { window: 1.0,  durMul: 1.0,  ballRate: 0.32, kinds: ["fast", "slow", "curve", "slider"],           aiBat: { chase: 0.16, swing: 0.95, dist: { homer: 0.07, hit: 0.32, foul: 0.28 } } },
-  hard:   { window: 0.8,  durMul: 0.92, ballRate: 0.35, kinds: ["fast", "slow", "curve", "slider", "sinker"], aiBat: { chase: 0.1,  swing: 0.97, dist: { homer: 0.1,  hit: 0.36, foul: 0.24 } } },
+  kids:   { window: 2.2,  durMul: 1.35,  ballRate: 0.18, kinds: ["slow"],                                     aiBat: { chase: 0.4,  swing: 0.82, dist: { homer: 0.01,  hit: 0.16, foul: 0.34 } } },
+  child:  { window: 1.7,  durMul: 1.2, ballRate: 0.25, kinds: ["slow", "fast"],                              aiBat: { chase: 0.3,  swing: 0.88, dist: { homer: 0.015, hit: 0.2,  foul: 0.32 } } },
+  easy:   { window: 1.35, durMul: 1.1, ballRate: 0.3,  kinds: ["fast", "slow", "curve"],                     aiBat: { chase: 0.22, swing: 0.92, dist: { homer: 0.025, hit: 0.23, foul: 0.3 } } },
+  normal: { window: 1.0,  durMul: 1.0,  ballRate: 0.32, kinds: ["fast", "slow", "curve", "slider"],           aiBat: { chase: 0.16, swing: 0.95, dist: { homer: 0.04,  hit: 0.27, foul: 0.28 } } },
+  hard:   { window: 0.8,  durMul: 0.92, ballRate: 0.35, kinds: ["fast", "slow", "curve", "slider", "sinker"], aiBat: { chase: 0.1,  swing: 0.97, dist: { homer: 0.06,  hit: 0.31, foul: 0.24 } } },
 };
 
 // dur=飛行秒數;brkX/brkY=途中彎折幅度(公尺);late=快到本壘才折(滑球/伸卡難讀)
@@ -368,7 +368,7 @@ export class BaseballGame {
     head.position.y = 1.22;
     g.add(legL, legR, torso, armL, armR, head);
     g.scale.setScalar(scale);
-    g.userData = { head, armR, armL };
+    g.userData = { head, armR, armL, jerseyMats: [jersey, capMat] };
     return g;
   }
 
@@ -460,13 +460,12 @@ export class BaseballGame {
   }
 
   setTeamColors() {
-    // 打擊方=藍、守備方=紅(雙人時 P1 藍/P2 紅,依 battingSide 切)
-    const batting = 0x2a5ac8;
-    const fielding = 0xc83a3a;
+    // 你打擊=打者藍/守備紅;AI(阿福)打擊=打者紅/守備藍(07-10 使用者點名)——含帽子
+    const BLUE = 0x2a5ac8, RED = 0xc83a3a;
+    const batting = this.humanBatting() ? BLUE : RED;
+    const fielding = batting === BLUE ? RED : BLUE;
     const paint = (mesh, color) => {
-      mesh.traverse((o) => {
-        if (o.isMesh && o.material && o.material.color && o.material.roughness === 0.8) o.material.color.setHex(color);
-      });
+      for (const m of mesh.userData.jerseyMats || []) m.color.setHex(color);
     };
     paint(this.batterMesh, batting);
     paint(this.pitcherMesh, fielding);
@@ -1107,6 +1106,7 @@ export class BaseballGame {
         this.half = "top";
         this.emit("half", { text: `${this.inning} 局上半` });
       }
+      this.setTeamColors(); // 攻守交換=隊色交換(AI 打擊時打者紅衣、守備藍衣)
       this.pitchKindIdx = 0; this.aimRow = 2; this.aimCol = 2;
     }
     // 球數制模式結束判定
