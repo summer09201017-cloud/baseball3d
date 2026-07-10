@@ -333,7 +333,8 @@ export class BaseballGame {
     const g = new THREE.Group();
     const jersey = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
     const pants = new THREE.MeshStandardMaterial({ color: 0x3a3f52, roughness: 0.9 });
-    const skin = new THREE.MeshStandardMaterial({ color: 0xf2d8b0, roughness: 0.7 });
+    // 膚色帶自發光——臉轉到光的背面(打者面向鏡頭側)也看得清表情
+    const skin = new THREE.MeshStandardMaterial({ color: 0xf2d8b0, roughness: 0.7, emissive: 0x8a7355, emissiveIntensity: 0.5 });
     const legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.16), pants);
     legL.position.set(-0.11, 0.25, 0);
     const legR = legL.clone(); legR.position.x = 0.11;
@@ -347,14 +348,23 @@ export class BaseballGame {
     const capMat = new THREE.MeshStandardMaterial({ color });
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.175, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), capMat);
     cap.position.y = 0.03;
-    // 臉:兩眼+嘴(貼在面向側)
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x2a2018 });
-    const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), eyeMat);
-    eyeL.position.set(-0.06, 0.02, 0.155 * faceDir);
-    const eyeR = eyeL.clone(); eyeR.position.x = 0.06;
-    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.018, 0.02), eyeMat);
-    mouth.position.set(0, -0.07, 0.16 * faceDir);
-    head.add(skull, cap, eyeL, eyeR, mouth);
+    // 臉:白眼珠+黑瞳孔+眉毛+微笑弧(07-10 使用者點名要有表情;貼在面向側)
+    const darkMat = new THREE.MeshBasicMaterial({ color: 0x2a2018 });
+    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const scleraL = new THREE.Mesh(new THREE.SphereGeometry(0.034, 10, 10), whiteMat);
+    scleraL.position.set(-0.06, 0.02, 0.148 * faceDir);
+    const scleraR = scleraL.clone(); scleraR.position.x = 0.06;
+    const pupilL = new THREE.Mesh(new THREE.SphereGeometry(0.017, 8, 8), darkMat);
+    pupilL.position.set(-0.06, 0.02, 0.178 * faceDir);
+    const pupilR = pupilL.clone(); pupilR.position.x = 0.06;
+    const browL = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.013, 0.016), darkMat);
+    browL.position.set(-0.06, 0.078, 0.152 * faceDir);
+    browL.rotation.z = 0.2 * faceDir;
+    const browR = browL.clone(); browR.position.x = 0.06; browR.rotation.z = -0.2 * faceDir;
+    const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.009, 8, 14, Math.PI), darkMat);
+    mouth.position.set(0, -0.045, 0.155 * faceDir);
+    mouth.rotation.z = Math.PI; // 弧口朝上=微笑
+    head.add(skull, cap, scleraL, scleraR, pupilL, pupilR, browL, browR, mouth);
     head.position.y = 1.22;
     g.add(legL, legR, torso, armL, armR, head);
     g.scale.setScalar(scale);
@@ -388,24 +398,23 @@ export class BaseballGame {
     const tip = new THREE.Mesh(new THREE.SphereGeometry(0.062, 12, 8), wood);
     tip.position.y = 1.09;
     this.bat.add(knob, handle, taper, barrel, tip);
+    // 球棒獨立掛在場景(世界座標控制)——揮棒=水平大迴旋掃過九宮格,棒頭在格子裡碰到球
     this.batPivot = new THREE.Group();
-    this.batPivot.position.set(-0.28, 1.0, 0);
     this.batPivot.add(this.bat);
-    this.batPivot.rotation.z = -0.5;
-    this.batPivot.rotation.x = 0.3;
-    this.batterMesh.add(this.batPivot);
+    this.scene.add(this.batPivot);
     this.scene.add(this.batterMesh);
     this.swingT = 0;
+    this.swingPlaneY = 0.9; // 這一揮的掃擊高度(=球的落點高度;揮空=故意掃高/掃低)
     this.buildDefense();
   }
 
-  // 套用打擊區(左/右打):站位、面向、球棒位置鏡像
+  // 套用打擊區(左/右打):側身 90°(與投手垂直,07-10 使用者點名),頭轉向投手
   applyBatSide(side) {
     this.batSide = side;
-    this.batterMesh.position.set(1.1 * side, 0, 0.35);
-    this.batterMesh.rotation.y = Math.PI * 0.08 * side;
-    this.batPivot.position.x = -0.28 * side;
-    this.batPivot.rotation.z = -0.5 * side;
+    this.batterMesh.position.set(1.15 * side, 0, 0.35);
+    this.batterMesh.rotation.y = (Math.PI / 2) * side * 0.92; // 側身面向本壘
+    const head = this.batterMesh.userData.head;
+    if (head) head.rotation.y = side * 0.7; // 頭轉向好球帶——主審視角看得到眼睛嘴巴表情(07-10 使用者點名)
   }
 
   buildDefense() {
@@ -663,8 +672,9 @@ export class BaseballGame {
       if (outcome === "hit" && Math.random() < 0.5) outcome = "flyout";
     }
     if (outcome === "whiff") {
-      // 揮空:立刻揮棒,球繼續飛進捕手(result 階段續飛)
+      // 揮空:立刻揮棒但掃高/掃低錯過球(視覺自解釋),球繼續飛進捕手
       this.swingT = 0.18;
+      this.swingPlaneY = clamp(b.ty + (Math.random() < 0.5 ? -0.3 : 0.3), 0.35, 1.55);
       this.resolveSwing(outcome);
     } else {
       // ★接觸類(全壘打/安打/接殺/界外):等球「真的到本壘九宮格」那一刻才揮棒+起飛
@@ -674,13 +684,14 @@ export class BaseballGame {
     }
   }
 
-  // 球抵達本壘的接觸瞬間:揮棒動畫+從九宮格接觸點起飛
+  // 球抵達本壘的接觸瞬間:起揮(掃擊面=球的落點高度),棒頭掃到格子那 0.08 秒才真的擊出
   contactNow() {
     const b = this.ball;
-    if (!b || !b.pendingOutcome) return;
+    if (!b || !b.pendingOutcome || b.contactScheduled) return;
+    b.contactScheduled = true;
     this.swingT = 0.18;
-    b.t = b.dur; // 對齊接觸點=選定落點(九宮格上)
-    this.resolveSwing(b.pendingOutcome);
+    this.swingPlaneY = clamp(b.ty, 0.4, 1.4);
+    this._contactDelay = 0.08; // 棒頭掃到九宮格的時間差(球此刻停在格上等棒子)
   }
 
   resolveSwing(outcome) {
@@ -1012,8 +1023,16 @@ export class BaseballGame {
       if (this.aiPlan?.swing && !this.ball.swung && this.ball.t >= this.aiPlan.at) {
         this._aiSwinging = true; this.swing(); this._aiSwinging = false;
       }
-      // 早揮的接觸類:等球到本壘那一刻才真的打到(球棒與球在九宮格相遇)
-      if (this.ball && this.ball.pendingOutcome && this.ball.t >= this.ball.dur) { this.contactNow(); return; }
+      // 早揮的接觸類:等球到本壘起揮,棒頭掃進格子那一刻擊出(球棒與球在九宮格相遇)
+      if (this.ball && this.ball.pendingOutcome && this.ball.t >= this.ball.dur) {
+        this.ball.t = this.ball.dur; // 球停在格上等棒頭
+        this.contactNow();
+        if (this._contactDelay > 0) {
+          this._contactDelay -= dt;
+          if (this._contactDelay <= 0) this.resolveSwing(this.ball.pendingOutcome);
+        }
+        return;
+      }
       if (this.ball && !this.ball.swung && this.ball.t >= this.ball.dur + 0.06) this.take();
       return;
     }
@@ -1133,16 +1152,22 @@ export class BaseballGame {
         this.ballMesh.position.copy(pos);
         this.ballMesh.visible = f.t < f.dur + 0.5;
       }
-      // 揮棒動畫(0.18s 快揮,前段吃掉大部分角度;左右打鏡像)
+      // 揮棒動畫:水平大迴旋掃過九宮格平面(與好球帶成 90°),棒頭經過球的落點格
       const sSide = this.batSide || 1;
+      const bm = this.batterMesh.position;
+      const UPv = new THREE.Vector3(0, 1, 0);
       if (this.swingT > 0) {
         const k = 1 - this.swingT / 0.18;
         const ease = 1 - Math.pow(1 - k, 2);
-        this.batPivot.rotation.y = -ease * 2.6 * sSide;
-        this.batPivot.rotation.z = -1.35 * sSide;
+        const beta = sSide * (1.45 - 4.36 * ease); // 從身後掃到跟前(掃過本壘方向)
+        const dir = new THREE.Vector3(Math.sin(beta), 0.05, Math.cos(beta)).normalize();
+        this.batPivot.position.set(bm.x - 0.35 * sSide, this.swingPlaneY, bm.z + 0.02);
+        this.batPivot.quaternion.setFromUnitVectors(UPv, dir);
       } else {
-        this.batPivot.rotation.y = 0;
-        this.batPivot.rotation.z = -0.5 * sSide;
+        // 閒置:棒扛後肩往後上方揚——不斜跨臉前擋表情(07-10 使用者點名要看得到臉)
+        this.batPivot.position.set(bm.x - 0.12 * sSide, 1.0, bm.z - 0.08);
+        const dir = new THREE.Vector3(0.5 * sSide, 1, -0.28).normalize();
+        this.batPivot.quaternion.setFromUnitVectors(UPv, dir);
       }
       // 投手投球抬手
       const throwing = this.phase === "pitching" && this.ball && this.ball.t < 0.3;
