@@ -155,6 +155,10 @@ function handleGameEvent(event) {
     case "steal-go":
       pushCommentary(`跑者起跑——要盜${["一", "二", "三"][event.toBase - 1]}壘!`, tone, "跑者起跑,要盜壘了!");
       break;
+    case "catcher-throw":
+      audio.pitchWhoosh();
+      pushCommentary('捕手長傳' + ['一','二','三'][event.toBase - 1] + '壘!', batting === 'home' ? 'cool' : 'hot', '');
+      break;
     case "steal-safe":
       audio.cheer();
       audio.crowdCheer(0.9);

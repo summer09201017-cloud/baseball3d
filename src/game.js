@@ -344,6 +344,12 @@ export class BaseballGame {
     this.scene.add(this.batterMesh);
     this.swingT = 0;
 
+    // 捕手(蹲在本壘後,面向投手;盜壘時由他長傳封殺——07-10 使用者點名)
+    this.catcherMesh = this.makePerson(0xc83a3a, { faceDir: -1, scale: 0.95 });
+    this.catcherMesh.scale.y = 0.68; // 蹲捕
+    this.catcherMesh.position.set(0.2, 0, 1.25);
+    this.scene.add(this.catcherMesh);
+
     // 野手(自動守備演出用;顏色隨守備方換)
     this.fielders = [];
     const spots = [
@@ -390,6 +396,7 @@ export class BaseballGame {
     };
     paint(this.batterMesh, batting);
     paint(this.pitcherMesh, fielding);
+    paint(this.catcherMesh, fielding);
     for (const f of this.fielders) paint(f, fielding);
     for (const r of this.runnerPool) paint(r, batting);
   }
@@ -417,7 +424,9 @@ export class BaseballGame {
     this.aiPlan = null;
     this.aiT = 0;
     this.aiStealT = 0;
-    this.stealing = null; // {runner, to, t, resolved}
+    this.stealing = null; // {runner, to, t, safe, runnerDur, resolved}
+    this.stealThrow = null;
+    this.stealBallLinger = 0;
     this.stealUsed = false;
     this.aimRow = 2;
     this.aimCol = 2;
@@ -491,6 +500,7 @@ export class BaseballGame {
 
   humanPitch() {
     if (this.phase !== "ready" || !this.humanPitching()) return;
+    if (this.stealing || this.stealThrow) return; // 盜壘攻防中,球不在投手手上
     const tx = GRID_C[this.aimCol] + rand(-0.03, 0.03);
     const ty = GRID_R[this.aimRow] + rand(-0.03, 0.03);
     this.pitch(this.currentKind(), tx, ty);
@@ -797,7 +807,7 @@ export class BaseballGame {
   // 打擊方在等球/來球途中可指揮「最前位、下一壘沒人」的跑者盜壘;失敗=出局(壘上事,打席不變)。
   canSteal() {
     if (this.stealing || this.stealUsed) return false;
-    if (this.phase !== "ready" && this.phase !== "pitching") return false;
+    if (this.phase !== "ready") return false; // 投球前才能盜(捕手手上有球可傳)
     const lead = [...this.runners].sort((a, b) => b.base - a.base).find((r) => r.base < 2 && !this.baseOccupied(r.base + 1));
     return !!lead;
   }
@@ -806,21 +816,28 @@ export class BaseballGame {
     const lead = [...this.runners].sort((a, b) => b.base - a.base).find((r) => r.base < 2 && !this.baseOccupied(r.base + 1));
     const to = lead.base + 1;
     this.stealUsed = true;
-    this.stealing = { runner: lead, to, t: 0, resolved: false };
-    this.animateRunner({ mesh: lead.mesh, base: lead.base }, to, 6.5);
+    // 先擲勝負,再編排演出:出局=捕手傳球先到、安全=跑者先到(判定=畫面)
+    let chance = to === 1 ? 0.72 : 0.52;
+    if (this.difficulty === "kids") chance += 0.16;
+    else if (this.difficulty === "child") chance += 0.08;
+    else if (this.difficulty === "hard") chance -= 0.08;
+    const safe = Math.random() < chance;
+    const runnerDur = BASE_DIST / 7.5;
+    this.stealing = { runner: lead, to, t: 0, safe, runnerDur, throwStarted: false, resolved: false };
+    this.animateRunner({ mesh: lead.mesh, base: lead.base }, to, 7.5);
+    // 守壘野手補位到壘包接傳球(二壘=二壘手/三壘=三壘手)
+    const cover = this.fielders[to === 1 ? 1 : 3];
+    if (cover) this.anims.push({ obj: cover, from: cover.position.clone(), to: this.basePos[to].clone().setY(0), t: 0, dur: Math.max(0.4, runnerDur * 0.55), back: true });
     this.emit("steal-go", { toBase: to + 1 });
     this.pushHud();
     return true;
   }
+
   resolveSteal() {
     const s = this.stealing;
-    if (!s) return;
+    if (!s || s.resolved) return;
     s.resolved = true;
-    let chance = s.to === 1 ? 0.72 : 0.52;
-    if (this.difficulty === "kids") chance += 0.16;
-    else if (this.difficulty === "child") chance += 0.08;
-    else if (this.difficulty === "hard") chance -= 0.08;
-    if (Math.random() < chance) {
+    if (s.safe) {
       s.runner.base = s.to;
       this.emit("steal-safe", { toBase: s.to + 1 });
     } else {
@@ -831,6 +848,7 @@ export class BaseballGame {
       if (this.queueHalfSwitch && this.phase === "ready") { this.phase = "result"; this.resultT = 0.9; }
     }
     this.stealing = null;
+    this.stealBallLinger = 0.6; // 傳到壘包的球停一下再收
     this.pushHud();
   }
 
@@ -864,10 +882,31 @@ export class BaseballGame {
       }
     }
     this.anims = this.anims.filter((a) => !a.finished);
-    // 盜壘判定:跑者跑到七成路程時宣判(安全上壘/出局)
+    // 盜壘演出:捕手 0.35s 反應→長傳到壘包;跑者到位那一刻宣判(球先到=出局/人先到=安全)
     if (this.stealing) {
-      this.stealing.t += dt;
-      if (!this.stealing.resolved && this.stealing.t > 0.8) this.resolveSteal();
+      const st = this.stealing;
+      st.t += dt;
+      if (!st.throwStarted && st.t >= 0.35) {
+        st.throwStarted = true;
+        const arrive = st.runnerDur + (st.safe ? 0.25 : -0.18); // 到位時間差=勝負
+        this.stealThrow = {
+          from: new THREE.Vector3(0.2, 1.0, 1.1),
+          to: this.basePos[st.to].clone().setY(0.55),
+          t: 0,
+          dur: Math.max(0.45, arrive - 0.35),
+        };
+        this.catcherMesh.userData.armR.rotation.x = -2.4; // 捕手抬臂傳球
+        this._catcherArmT = 0.5;
+        this.emit("catcher-throw", { toBase: st.to + 1 });
+      }
+      if (!st.resolved && st.t >= st.runnerDur) this.resolveSteal();
+    }
+    if (this.stealThrow) {
+      this.stealThrow.t += dt;
+    }
+    if (this.stealBallLinger > 0) {
+      this.stealBallLinger -= dt;
+      if (this.stealBallLinger <= 0) this.stealThrow = null;
     }
     // AI 打擊方偶爾發動盜壘
     if (this.aiStealT > 0) {
@@ -876,7 +915,7 @@ export class BaseballGame {
     }
 
     if (this.phase === "ready") {
-      if (!this.humanPitching()) {
+      if (!this.humanPitching() && !this.stealing && !this.stealThrow) {
         this.aiT -= dt;
         if (this.aiT <= 0) this.aiPitch();
       }
@@ -929,6 +968,7 @@ export class BaseballGame {
     this.ballMesh.visible = false;
     this.ball = null;
     this.hitFly = null;
+    this.stealThrow = null;
     this.stealUsed = false;
     // 半局/比賽推進
     if (this.queueHalfSwitch) {
@@ -987,7 +1027,15 @@ export class BaseballGame {
       const dt = Math.min(0.05, this._clock.getDelta());
       if (this.phase !== "menu" && this.phase !== "done") this.update(dt);
       // 球位置
-      if (this.ball && (this.phase === "pitching" || this.phase === "result")) {
+      if (this.stealThrow) {
+        // 捕手長傳:低平快弧線飛向壘包(盜壘只在投球前,球此刻不在別處)
+        const th = this.stealThrow;
+        const k = clamp(th.t / th.dur, 0, 1);
+        const pos = new THREE.Vector3().lerpVectors(th.from, th.to, k);
+        pos.y += Math.sin(k * Math.PI) * 1.6;
+        this.ballMesh.position.copy(pos);
+        this.ballMesh.visible = true;
+      } else if (this.ball && (this.phase === "pitching" || this.phase === "result")) {
         this.ballMesh.position.copy(this.ballPos(this.ball));
         this.ballMesh.visible = true;
       } else if (this.hitFly) {
@@ -1004,6 +1052,11 @@ export class BaseballGame {
       // 投手投球抬手
       const throwing = this.phase === "pitching" && this.ball && this.ball.t < 0.3;
       this.pitcherMesh.userData.armR.rotation.x = throwing ? -2.4 : 0;
+      // 捕手傳球手臂復位
+      if (this._catcherArmT > 0) {
+        this._catcherArmT -= dt;
+        if (this._catcherArmT <= 0) this.catcherMesh.userData.armR.rotation.x = 0;
+      }
       // 接殺野手舉手接球
       if (this._catchPoseT > 0) {
         this._catchPoseT -= dt;
