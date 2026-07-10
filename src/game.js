@@ -23,11 +23,11 @@ export const DIFFICULTY_LABELS = {
 // window=時機窗倍率(越大越好打);durMul=球速倍率(越大越慢);ballRate=AI 投手壞球率;
 // kinds=AI 投手會用的球種;aiBat=AI 打者(你投球時):chase 追打壞球率、swing 好球出棒率、dist 結果分布
 export const DIFFICULTY_PRESETS = {
-  kids:   { window: 2.2,  durMul: 1.35,  ballRate: 0.18, kinds: ["slow"],                                     aiBat: { chase: 0.4,  swing: 0.82, dist: { homer: 0.08, hit: 0.24, foul: 0.34 } } },
-  child:  { window: 1.7,  durMul: 1.2, ballRate: 0.25, kinds: ["slow", "fast"],                              aiBat: { chase: 0.3,  swing: 0.88, dist: { homer: 0.12, hit: 0.3,  foul: 0.32 } } },
-  easy:   { window: 1.35, durMul: 1.1, ballRate: 0.3,  kinds: ["fast", "slow", "curve"],                     aiBat: { chase: 0.22, swing: 0.92, dist: { homer: 0.16, hit: 0.34, foul: 0.3 } } },
-  normal: { window: 1.0,  durMul: 1.0,  ballRate: 0.32, kinds: ["fast", "slow", "curve", "slider"],           aiBat: { chase: 0.16, swing: 0.95, dist: { homer: 0.2,  hit: 0.36, foul: 0.28 } } },
-  hard:   { window: 0.8,  durMul: 0.92, ballRate: 0.35, kinds: ["fast", "slow", "curve", "slider", "sinker"], aiBat: { chase: 0.1,  swing: 0.97, dist: { homer: 0.26, hit: 0.38, foul: 0.24 } } },
+  kids:   { window: 2.2,  durMul: 1.35,  ballRate: 0.18, kinds: ["slow"],                                     aiBat: { chase: 0.4,  swing: 0.82, dist: { homer: 0.02, hit: 0.2,  foul: 0.34 } } },
+  child:  { window: 1.7,  durMul: 1.2, ballRate: 0.25, kinds: ["slow", "fast"],                              aiBat: { chase: 0.3,  swing: 0.88, dist: { homer: 0.03, hit: 0.25, foul: 0.32 } } },
+  easy:   { window: 1.35, durMul: 1.1, ballRate: 0.3,  kinds: ["fast", "slow", "curve"],                     aiBat: { chase: 0.22, swing: 0.92, dist: { homer: 0.05, hit: 0.28, foul: 0.3 } } },
+  normal: { window: 1.0,  durMul: 1.0,  ballRate: 0.32, kinds: ["fast", "slow", "curve", "slider"],           aiBat: { chase: 0.16, swing: 0.95, dist: { homer: 0.07, hit: 0.32, foul: 0.28 } } },
+  hard:   { window: 0.8,  durMul: 0.92, ballRate: 0.35, kinds: ["fast", "slow", "curve", "slider", "sinker"], aiBat: { chase: 0.1,  swing: 0.97, dist: { homer: 0.1,  hit: 0.36, foul: 0.24 } } },
 };
 
 // dur=飛行秒數;brkX/brkY=途中彎折幅度(公尺);late=快到本壘才折(滑球/伸卡難讀)
@@ -627,8 +627,8 @@ export class BaseballGame {
         const d = this.ball.isStrike ? ai.dist : { homer: 0, hit: 0.1, foul: 0.42 };
         let adt;
         if (roll < d.homer) adt = Math.random() * w.perfect;
-        else if (roll < d.homer + d.hit) adt = w.perfect + Math.random() * (w.good * 0.6 - w.perfect);
-        else if (roll < d.homer + d.hit + d.foul) adt = w.good + Math.random() * w.good * 0.9;
+        else if (roll < d.homer + d.hit) adt = w.perfect + 0.03 + Math.random() * Math.max(0.02, w.good * 0.6 - w.perfect - 0.03);
+        else if (roll < d.homer + d.hit + d.foul) adt = w.good + 0.03 + Math.random() * w.good * 0.9;
         else adt = w.good * 1.9 + 0.05 + Math.random() * 0.2;
         this.aiPlan = { swing: true, at: this.ball.dur - adt };
       }
