@@ -22,6 +22,7 @@ const ui = {
   difficultySelect: $("difficultySelect"), audioSelect: $("audioSelect"),
   pitchCountInput: $("pitchCountInput"), pitchCountLabel: $("pitchCountLabel"),
   inningsInput: $("inningsInput"), inningsLabel: $("inningsLabel"),
+  targetRunsInput: $("targetRunsInput"), targetRunsLabel: $("targetRunsLabel"),
   startMatchButton: $("startMatchButton"), modeHint: $("modeHint"),
 };
 
@@ -110,6 +111,11 @@ function handleGameEvent(event) {
       audio.buzz();
       audio.crowdCheer(0.3);
       pushCommentary(pick(["大棒一揮——落空!", "揮棒落空!", "球從棒下溜過去了!"]));
+      break;
+    case "hbp":
+      audio.buzz();
+      audio.crowdCheer(0.6);
+      pushCommentary(`哎呀,觸身球!${batterName} 保送上壘!`, tone, "觸身球!保送上壘!");
       break;
     case "walk":
       audio.cheer();
@@ -228,9 +234,11 @@ function persist() {
 // 球數/局數輸入:依模式顯示(練習/投球挑戰=球數;對戰=局數);預設只是預設,玩家可改(量值通則)
 function syncCountInputs() {
   const isInnings = selectedMode === "match3" || selectedMode === "duel2p";
-  ui.pitchCountInput.hidden = isInnings; ui.pitchCountLabel.hidden = isInnings;
+  const isRace = selectedMode === "racerun";
+  ui.pitchCountInput.hidden = isInnings || isRace; ui.pitchCountLabel.hidden = isInnings || isRace;
   ui.inningsInput.hidden = !isInnings; ui.inningsLabel.hidden = !isInnings;
-  if (!isInnings) ui.pitchCountInput.value = String(selectedMode === "pitchduel" ? (settings.pitchduelCount || 6) : (settings.practiceCount || 10));
+  ui.targetRunsInput.hidden = !isRace; ui.targetRunsLabel.hidden = !isRace;
+  if (!isInnings && !isRace) ui.pitchCountInput.value = String(selectedMode === "pitchduel" ? (settings.pitchduelCount || 6) : (settings.practiceCount || 10));
 }
 ui.modeCardGrid.addEventListener("click", (e) => {
   const card = e.target.closest(".mode-card");
@@ -261,10 +269,11 @@ ui.startMatchButton.addEventListener("click", () => {
   audio.unlock(); audio.uiTap();
   const pitchCount = Math.max(1, Math.min(30, parseInt(ui.pitchCountInput.value, 10) || 10));
   const innings = Math.max(1, Math.min(9, parseInt(ui.inningsInput.value, 10) || 3));
+  const targetRuns = Math.max(1, Math.min(30, parseInt(ui.targetRunsInput.value, 10) || 5));
   if (selectedMode === "practice") settings.practiceCount = pitchCount;
   if (selectedMode === "pitchduel") settings.pitchduelCount = pitchCount;
   saveSettings({ ...settings, modeId: selectedMode, difficulty: selectedDifficulty, audioEnabled });
-  game.applyPresentation({ difficulty: selectedDifficulty, modeId: selectedMode, pitchCount, innings });
+  game.applyPresentation({ difficulty: selectedDifficulty, modeId: selectedMode, pitchCount, innings, targetRuns });
   ui.homeScreen.classList.remove("visible");
   ui.matchOverlay.classList.remove("visible");
   game.startMatch();

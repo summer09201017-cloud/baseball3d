@@ -88,6 +88,9 @@
             <button class="mode-card" data-mode="duel2p">
               <strong>👥 雙人同機</strong><span>投打輪流 PK,3 局定勝負</span>
             </button>
+            <button class="mode-card" data-mode="racerun">
+              <strong>🏁 搶分對戰</strong><span>無局數上限——先得目標分獲勝(分數自訂)</span>
+            </button>
           </div>
 
           <div class="home-row">
@@ -95,6 +98,8 @@
             <input id="pitchCountInput" type="number" min="1" max="30" value="10" />
             <label for="inningsInput" id="inningsLabel" hidden>局數</label>
             <input id="inningsInput" type="number" min="1" max="9" value="3" hidden />
+            <label for="targetRunsInput" id="targetRunsLabel" hidden>目標分</label>
+            <input id="targetRunsInput" type="number" min="1" max="30" value="5" hidden />
             <label for="difficultySelect">難度</label>
             <select id="difficultySelect">
               <option value="kids">幼兒（超簡單）</option>

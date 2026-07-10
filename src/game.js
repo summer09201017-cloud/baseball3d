@@ -43,6 +43,7 @@ export const GAME_MODES = {
   practice:  { id: "practice",  label: "打擊練習", pitches: 10 },
   pitchduel: { id: "pitchduel", label: "投球挑戰", pitches: 6 },
   match3:    { id: "match3",    label: "短場對戰", innings: 3 },
+  racerun:   { id: "racerun",   label: "搶分對戰", innings: 99, targetRuns: 5 },
   duel2p:    { id: "duel2p",    label: "雙人同機", innings: 3 },
 };
 
@@ -544,14 +545,15 @@ export class BaseballGame {
     return this.half === "bottom";
   }
   battingTeam() { return this.half === "top" ? "home" : "away"; }
-  inningsMode() { return this.modeId === "match3" || this.modeId === "duel2p"; }
+  inningsMode() { return this.modeId === "match3" || this.modeId === "duel2p" || this.modeId === "racerun"; }
 
-  applyPresentation({ difficulty, modeId, pitchCount, innings }) {
+  applyPresentation({ difficulty, modeId, pitchCount, innings, targetRuns }) {
     if (DIFFICULTY_PRESETS[difficulty]) this.difficulty = difficulty;
     if (GAME_MODES[modeId]) this.modeId = modeId;
     // ★量值通則(07-10 使用者拍板):球數/局數一律玩家輸入,GAME_MODES 的值只是預設
     if (pitchCount >= 1) this.pitchLimit = Math.min(30, Math.round(pitchCount));
     if (innings >= 1) this.inningLimit = Math.min(9, Math.round(innings));
+    if (targetRuns >= 1) this.targetRuns = Math.min(30, Math.round(targetRuns)); // 搶分對戰:先得 N 分獲勝(量值通則)
   }
 
   startMatch() {
@@ -599,6 +601,13 @@ export class BaseballGame {
     const p = this.preset;
     const kind = pickFrom(p.kinds);
     let tx, ty;
+    // 觸身球(07-11 移植「犯規判罰」):AI 投手偶爾失投砸向打者=保送上壘
+    if (Math.random() < 0.045) {
+      const side = this.batSide || 1;
+      this.pitch(kind, side * 0.85, rand(0.9, 1.25));
+      if (this.ball) this.ball.hbp = true;
+      return;
+    }
     if (Math.random() < p.ballRate) {
       const side = Math.floor(Math.random() * 4);
       if (side === 0) { tx = rand(ZONE.x0, ZONE.x1); ty = ZONE.y1 + rand(0.18, 0.3); }
@@ -821,6 +830,17 @@ export class BaseballGame {
   take() {
     const b = this.ball;
     b.swung = true;
+    if (b.hbp) {
+      // 觸身球:打者中彈縮身,直接保送(07-11 移植判罰機制)
+      this.advanceRunners("walk");
+      this.emit("hbp", {});
+      this.balls = 0; this.strikes = 0;
+      if (this.modeId === "practice") this.points += 1;
+      this.cameraShake = Math.max(this.cameraShake, 0.2);
+      this.afterPitch(1.2);
+      this.pushHud();
+      return;
+    }
     if (b.isStrike) { this.strikes += 1; this.emit("strike-take", {}); }
     else { this.balls += 1; this.emit("ball-take", {}); }
     this.afterCount();
@@ -1126,13 +1146,19 @@ export class BaseballGame {
         this.half = "bottom";
         this.emit("half", { text: `${this.inning} 局下半` });
       } else {
-        if (this.inning >= (this.inningLimit || this.mode.innings)) return this.finishMatch();
+        const inningCap = this.modeId === "racerun" ? 99 : (this.inningLimit || this.mode.innings);
+        if (this.inning >= inningCap) return this.finishMatch();
         this.inning += 1;
         this.half = "top";
         this.emit("half", { text: `${this.inning} 局上半` });
       }
       this.setTeamColors(); // 攻守交換=隊色交換(AI 打擊時打者紅衣、守備藍衣)
       this.pitchKindIdx = 0; this.aimRow = 2; this.aimCol = 2;
+    }
+    // 搶分對戰:任一隊先到目標分即終場(跑者收完才判,畫面完整)
+    if (this.modeId === "racerun") {
+      const target = this.targetRuns || this.mode.targetRuns;
+      if (this.score.home >= target || this.score.away >= target) return this.finishMatch();
     }
     // 球數制模式結束判定
     if (!this.inningsMode() && this.pitchCount >= (this.pitchLimit || this.mode.pitches)) return this.finishMatch();
