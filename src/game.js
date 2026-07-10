@@ -347,7 +347,7 @@ export class BaseballGame {
     // 野手(自動守備演出用;顏色隨守備方換)
     this.fielders = [];
     const spots = [
-      [11.5, -12], [4, -22.5], [-4, -22.5], [-11.5, -12], // 內野 1B/2B/SS/3B(二壘手/游擊守在二壘兩側)
+      [11.5, -12], [3, -24.5], [-3, -24.5], [-11.5, -12], // 內野 1B/2B/SS/3B(07-10 使用者再點名:二壘手/游擊貼著二壘兩側站)
       [-24, -42], [0, -50], [24, -42], // 外野 LF/CF/RF
     ];
     for (const [x, z] of spots) {
@@ -569,7 +569,6 @@ export class BaseballGame {
     if (!this.humanBatting() && !this._aiSwinging) return; // 投球挑戰:人不能替 AI 揮
     const b = this.ball;
     b.swung = true;
-    this.swingT = 0.32;
     const w = this.windows();
     const adt = Math.abs(b.t - b.dur);
     let outcome;
@@ -583,12 +582,31 @@ export class BaseballGame {
       if (outcome === "homer") outcome = "hit";
       if (outcome === "hit" && Math.random() < 0.5) outcome = "flyout";
     }
-    this.resolveSwing(outcome);
+    if (outcome === "whiff") {
+      // 揮空:立刻揮棒,球繼續飛進捕手(result 階段續飛)
+      this.swingT = 0.32;
+      this.resolveSwing(outcome);
+    } else {
+      // ★接觸類(全壘打/安打/接殺/界外):等球「真的到本壘九宮格」那一刻才揮棒+起飛
+      //   (07-10 使用者回報 bug:不能球還在半路就被打飛)
+      b.pendingOutcome = outcome;
+      if (b.t >= b.dur) this.contactNow(); // 已在窗內晚揮=當下就接觸
+    }
+  }
+
+  // 球抵達本壘的接觸瞬間:揮棒動畫+從九宮格接觸點起飛
+  contactNow() {
+    const b = this.ball;
+    if (!b || !b.pendingOutcome) return;
+    this.swingT = 0.32;
+    b.t = b.dur; // 對齊接觸點=選定落點(九宮格上)
+    this.resolveSwing(b.pendingOutcome);
   }
 
   resolveSwing(outcome) {
     const pos = this.ballPos(this.ball);
-    this.ball = null;
+    if (outcome !== "whiff") this.ball = null; // 揮空的球留著,result 階段續飛進捕手
+    else this.ball.pendingOutcome = null;
     switch (outcome) {
       case "homer": this.launchHit(pos, "homer"); break;
       case "hit": {
@@ -700,7 +718,7 @@ export class BaseballGame {
     return pts;
   }
 
-  animateRunner(runner, toBase, speed = 8.5) {
+  animateRunner(runner, toBase, speed = 10) {
     const pts = this.runnerPath(runner.base ?? -1, toBase);
     let total = 0;
     for (let i = 1; i < pts.length; i++) total += pts[i].distanceTo(pts[i - 1]);
@@ -733,7 +751,7 @@ export class BaseballGame {
     } else if (kind === "homer") {
       for (const r of [...this.runners].sort((a, b) => b.base - a.base)) scoreRunner(r);
       const mesh = this.borrowRunnerMesh();
-      if (mesh) { runs += 1; this.animateRunner({ mesh, base: -1 }, 3, 11); }
+      if (mesh) { runs += 1; this.animateRunner({ mesh, base: -1 }, 3, 14); }
     } else {
       const n = kind === "single" ? 1 : kind === "double" ? 2 : 3;
       for (const r of [...this.runners].sort((a, b) => b.base - a.base)) {
@@ -846,10 +864,17 @@ export class BaseballGame {
       if (this.aiPlan?.swing && !this.ball.swung && this.ball.t >= this.aiPlan.at) {
         this._aiSwinging = true; this.swing(); this._aiSwinging = false;
       }
+      // 早揮的接觸類:等球到本壘那一刻才真的打到(球棒與球在九宮格相遇)
+      if (this.ball && this.ball.pendingOutcome && this.ball.t >= this.ball.dur) { this.contactNow(); return; }
       if (this.ball && !this.ball.swung && this.ball.t >= this.ball.dur + 0.06) this.take();
       return;
     }
     if (this.phase === "result") {
+      // 揮空/看過去的球:繼續朝捕手飛,過本壘一小段淡出(不再凍在半空)
+      if (this.ball) {
+        this.ball.t += dt;
+        if (this.ball.t > this.ball.dur * 1.35) { this.ball = null; this.ballMesh.visible = false; }
+      }
       if (this.hitFly) {
         this.hitFly.t += dt;
         if (this.hitFly.t >= this.hitFly.dur && !this.hitFly.landed) {
@@ -869,7 +894,10 @@ export class BaseballGame {
         }
       }
       this.resultT -= dt;
-      if (this.resultT <= 0) this.endOfPlay();
+      // ★07-10 使用者回報 bug:安打/全壘打後跑者還在跑,投手就投下一球——
+      //   跑壘動畫(path 動畫)與盜壘沒收完前,不進下一球(投手等待)。
+      const runnersStillRunning = this.anims.some((a) => a.path && !a.finished) || this.stealing;
+      if (this.resultT <= 0 && !runnersStillRunning) this.endOfPlay();
     }
   }
 
