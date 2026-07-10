@@ -449,9 +449,12 @@ export class BaseballGame {
   battingTeam() { return this.half === "top" ? "home" : "away"; }
   inningsMode() { return this.modeId === "match3" || this.modeId === "duel2p"; }
 
-  applyPresentation({ difficulty, modeId }) {
+  applyPresentation({ difficulty, modeId, pitchCount, innings }) {
     if (DIFFICULTY_PRESETS[difficulty]) this.difficulty = difficulty;
     if (GAME_MODES[modeId]) this.modeId = modeId;
+    // ★量值通則(07-10 使用者拍板):球數/局數一律玩家輸入,GAME_MODES 的值只是預設
+    if (pitchCount >= 1) this.pitchLimit = Math.min(30, Math.round(pitchCount));
+    if (innings >= 1) this.inningLimit = Math.min(9, Math.round(innings));
   }
 
   startMatch() {
@@ -627,7 +630,8 @@ export class BaseballGame {
         this.strikes += 1;
         this.emit("whiff", {});
         this.afterCount();
-        this.afterPitch(0.9);
+        // 等球飛完進九宮格(捕手手套位)再停 0.8 秒,才進下一球
+        this.afterPitch(Math.max(0, this.ball.dur - this.ball.t) + 0.8);
       }
     }
     this.pushHud();
@@ -890,11 +894,9 @@ export class BaseballGame {
       return;
     }
     if (this.phase === "result") {
-      // 揮空/看過去的球:繼續朝捕手飛,過本壘一小段淡出(不再凍在半空)
-      if (this.ball) {
-        this.ball.t += dt;
-        if (this.ball.t > this.ball.dur * 1.35) { this.ball = null; this.ballMesh.visible = false; }
-      }
+      // 揮空/看過去的球:飛完全程後「停在九宮格落點」(捕手手套位),下一球才收走
+      // (07-10 使用者點名:球不要消失,要進九宮格裡)
+      if (this.ball) this.ball.t = Math.min(this.ball.t + dt, this.ball.dur);
       if (this.hitFly) {
         this.hitFly.t += dt;
         if (this.hitFly.t >= this.hitFly.dur && !this.hitFly.landed) {
@@ -925,6 +927,7 @@ export class BaseballGame {
 
   endOfPlay() {
     this.ballMesh.visible = false;
+    this.ball = null;
     this.hitFly = null;
     this.stealUsed = false;
     // 半局/比賽推進
@@ -937,7 +940,7 @@ export class BaseballGame {
         this.half = "bottom";
         this.emit("half", { text: `${this.inning} 局下半` });
       } else {
-        if (this.inning >= this.mode.innings) return this.finishMatch();
+        if (this.inning >= (this.inningLimit || this.mode.innings)) return this.finishMatch();
         this.inning += 1;
         this.half = "top";
         this.emit("half", { text: `${this.inning} 局上半` });
@@ -945,7 +948,7 @@ export class BaseballGame {
       this.pitchKindIdx = 0; this.aimRow = 2; this.aimCol = 2;
     }
     // 球數制模式結束判定
-    if (!this.inningsMode() && this.pitchCount >= this.mode.pitches) return this.finishMatch();
+    if (!this.inningsMode() && this.pitchCount >= (this.pitchLimit || this.mode.pitches)) return this.finishMatch();
     this.phase = "ready";
     if (!this.humanPitching()) this.aiT = rand(1.0, 1.9);
     // AI 打擊方(投球挑戰/短場下半):偶爾指揮盜壘
@@ -958,12 +961,14 @@ export class BaseballGame {
     this.phase = "done";
     let title, text;
     if (this.modeId === "practice") {
-      this.stars = this.points >= 16 ? 3 : this.points >= 8 ? 2 : 1;
+      const n = this.pitchLimit || 10;
+      this.stars = this.points >= n * 1.6 ? 3 : this.points >= n * 0.8 ? 2 : 1;
       title = this.stars === 3 ? `🏆 打擊王!${this.points} 分!` : this.stars === 2 ? `🎉 好打者!${this.points} 分!` : `⚾ 練習完成!${this.points} 分!`;
       text = "看清好壞球、抓好時機——下一球永遠是新的機會!";
     } else if (this.modeId === "pitchduel") {
       const s = this.score.away;
-      this.stars = s <= 2 ? 3 : s <= 5 ? 2 : 1;
+      const n = this.pitchLimit || 6;
+      this.stars = s <= n * 0.35 ? 3 : s <= n * 0.85 ? 2 : 1;
       title = this.stars === 3 ? `🏆 王牌投手!只讓阿福得 ${s} 分!` : `🎯 投球挑戰結束,阿福得 ${s} 分`;
       text = "好球搶好球數、壞球引誘出棒——控球就是投手的本事!";
     } else {
@@ -982,10 +987,9 @@ export class BaseballGame {
       const dt = Math.min(0.05, this._clock.getDelta());
       if (this.phase !== "menu" && this.phase !== "done") this.update(dt);
       // 球位置
-      if (this.phase === "pitching" && this.ball) {
+      if (this.ball && (this.phase === "pitching" || this.phase === "result")) {
         this.ballMesh.position.copy(this.ballPos(this.ball));
-        const p = Math.min(1.3, this.ball.t / this.ball.dur);
-        if (p > 1.25) this.ballMesh.visible = false;
+        this.ballMesh.visible = true;
       } else if (this.hitFly) {
         const f = this.hitFly;
         const k = clamp(f.t / f.dur, 0, 1);
@@ -1057,7 +1061,7 @@ export class BaseballGame {
       inning: this.inning,
       half: this.half,
       pitchCount: this.pitchCount,
-      totalPitches: this.mode.pitches || 0,
+      totalPitches: this.pitchLimit || this.mode.pitches || 0,
       modeId: this.modeId,
       modeLabel: this.mode.label,
       p2Label: p2,

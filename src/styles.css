@@ -157,3 +157,9 @@ body {
   .commentary-bar { top: 58px; font-size: 14px; }
   .team-score { font-size: 24px; }
 }
+
+.home-row input[type="number"] {
+  width: 74px; padding: 8px 10px; border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: #101a2e; color: #ffe070; font-size: 15px; font-weight: 700; text-align: center;
+}
