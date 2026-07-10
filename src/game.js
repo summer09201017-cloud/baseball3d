@@ -234,6 +234,22 @@ export class BaseballGame {
     this.scene.add(this.crowdGroup);
     this.crowdCheerT = 0;
 
+    // 後方大計分板(07-10 使用者點名):9 局逐局計分+壘上有人菱形燈+B/S/O
+    this.sbCanvas = document.createElement("canvas");
+    this.sbCanvas.width = 1024; this.sbCanvas.height = 384;
+    this.sbCtx = this.sbCanvas.getContext("2d");
+    this.sbTexture = new THREE.CanvasTexture(this.sbCanvas);
+    const sbMat = new THREE.MeshBasicMaterial({ map: this.sbTexture });
+    const sb = new THREE.Mesh(new THREE.PlaneGeometry(34, 12.75), sbMat);
+    sb.position.set(0, 13.5, -88);
+    this.scene.add(sb);
+    const sbPole = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2, 8, 1.2),
+      new THREE.MeshStandardMaterial({ color: 0x3a4255 }),
+    );
+    sbPole.position.set(0, 4, -88.5);
+    this.scene.add(sbPole);
+
     // 夜賽燈塔(裝飾)
     const lightMat = new THREE.MeshStandardMaterial({ color: 0x8a8f9a });
     const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffe9a0 });
@@ -418,6 +434,7 @@ export class BaseballGame {
     this.inning = 1;
     this.half = "top"; // top=主隊(你/P1)打擊
     this.pitchCount = 0;
+    this.lineScore = { home: [], away: [] }; // 逐局得分(後方大計分板用)
     this.runners = []; // {mesh, base:0|1|2}(跑者物件制,支援動畫與盜壘)
     this.ball = null; // {t,dur,kind,tx,ty,brkX,brkY,late,isStrike,swung}
     this.hitFly = null;
@@ -798,6 +815,8 @@ export class BaseballGame {
     }
     if (runs > 0) {
       this.score[team] += runs;
+      const inn = Math.max(0, this.inning - 1);
+      this.lineScore[team][inn] = (this.lineScore[team][inn] || 0) + runs;
       this.emit("run", { team, runs, homeScore: this.score.home, awayScore: this.score.away });
       if (this.modeId === "practice") this.points += runs; // 練習模式跑分也算分
     }
@@ -1099,6 +1118,84 @@ export class BaseballGame {
     this._raf = requestAnimationFrame(loop);
   }
 
+  // 後方大計分板重繪(事件時呼叫,不每幀畫)
+  drawScoreboard() {
+    if (!this.sbCtx) return;
+    const c = this.sbCtx;
+    const W = 1024, H = 384;
+    c.fillStyle = "#081120"; c.fillRect(0, 0, W, H);
+    c.strokeStyle = "#ffe070"; c.lineWidth = 8; c.strokeRect(4, 4, W - 8, H - 8);
+    const innings = 9;
+    const gridX = 130, gridW = 62, rowY = [104, 188, 272];
+    c.font = "bold 44px 'Noto Sans TC', sans-serif";
+    c.textAlign = "center"; c.textBaseline = "middle";
+    // 表頭 1..9 R
+    c.fillStyle = "#8fa3c8";
+    for (let i = 0; i < innings; i++) c.fillText(String(i + 1), gridX + i * gridW + gridW / 2, 52);
+    c.fillStyle = "#ffe070";
+    c.fillText("R", gridX + innings * gridW + 44, 52);
+    // 兩隊名+逐局
+    const p1 = this.modeId === "duel2p" ? "P1" : "你";
+    const p2 = this.modeId === "duel2p" ? "P2" : "阿福";
+    const rows = [
+      { name: p1, team: "home", color: "#7db2ff" },
+      { name: p2, team: "away", color: "#ff9a8a" },
+    ];
+    rows.forEach((row, r) => {
+      const y = rowY[r];
+      c.fillStyle = row.color;
+      c.textAlign = "left";
+      c.fillText(row.name, 26, y);
+      c.textAlign = "center";
+      for (let i = 0; i < innings; i++) {
+        const v = this.lineScore[row.team][i];
+        const isCur = this.inningsMode() && this.inning === i + 1 && ((row.team === "home") === (this.half === "top")) && this.phase !== "done";
+        c.fillStyle = isCur ? "#ffe070" : "#e8eef8";
+        c.fillText(v === undefined ? (isCur ? "•" : "-") : String(v), gridX + i * gridW + gridW / 2, y);
+      }
+      c.fillStyle = "#ffe070";
+      c.font = "bold 52px 'Noto Sans TC', sans-serif";
+      c.fillText(String(this.score[row.team]), gridX + innings * gridW + 44, y);
+      c.font = "bold 44px 'Noto Sans TC', sans-serif";
+    });
+    // 壘上有人:菱形三燈(左=一壘在右側習慣?照棒球記分牌:中上=二壘,左下=三壘,右下=一壘)
+    const bx = 880, by = 262, r2 = 26, gap = 34;
+    const diamonds = [
+      { base: 1, x: bx, y: by - gap },        // 二壘(上)
+      { base: 0, x: bx + gap, y: by + 6 },    // 一壘(右下)
+      { base: 2, x: bx - gap, y: by + 6 },    // 三壘(左下)
+    ];
+    c.save();
+    for (const d of diamonds) {
+      c.save();
+      c.translate(d.x, d.y);
+      c.rotate(Math.PI / 4);
+      c.fillStyle = this.baseOccupied(d.base) ? "#ffe070" : "rgba(255,255,255,0.14)";
+      c.fillRect(-r2 / 1.6, -r2 / 1.6, r2 * 1.25, r2 * 1.25);
+      c.restore();
+    }
+    c.restore();
+    // B/S/O 燈
+    c.font = "bold 34px 'Noto Sans TC', sans-serif";
+    const lights = [
+      { label: "B", n: 3, lit: this.balls, color: "#5ad06a", y: 96 },
+      { label: "S", n: 2, lit: this.strikes, color: "#ffd24a", y: 144 },
+      { label: "O", n: 3, lit: this.outs, color: "#e05040", y: 192 },
+    ];
+    for (const L of lights) {
+      c.fillStyle = "#8fa3c8";
+      c.textAlign = "left";
+      c.fillText(L.label, 812, L.y);
+      for (let i = 0; i < L.n; i++) {
+        c.beginPath();
+        c.arc(856 + i * 44, L.y, 14, 0, Math.PI * 2);
+        c.fillStyle = i < L.lit ? L.color : "rgba(255,255,255,0.14)";
+        c.fill();
+      }
+    }
+    this.sbTexture.needsUpdate = true;
+  }
+
   pushHud() {
     const p2 = this.modeId === "duel2p" ? "P2" : "阿福";
     const kinds = this.humanPitching() ? Object.keys(PITCH_KINDS) : this.preset.kinds;
@@ -1125,5 +1222,6 @@ export class BaseballGame {
       canSteal: this.canSteal() && this.humanBatting(),
       basesText: ["一", "二", "三"].filter((_, i) => this.baseOccupied(i)).map((n) => n + "壘").join("、") || "壘上無人",
     });
+    this.drawScoreboard();
   }
 }
