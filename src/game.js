@@ -642,7 +642,9 @@ export class BaseballGame {
     else if (type === "double") { dist = rand(44, 58); peak = rand(7, 11); }
     else if (type === "single") { dist = rand(24, 40); peak = rand(4, 8); }
     else { dist = rand(26, 52); peak = rand(10, 15); } // flyout 高飛
-    const to = new THREE.Vector3(Math.sin(angle) * dist, 0.2, -Math.cos(angle) * dist);
+    // 接殺球的終點=野手手套高度(空中被接走,絕不落地);安打/全壘打照常落地/出牆
+    const endY = type === "flyout" ? 1.15 : 0.2;
+    const to = new THREE.Vector3(Math.sin(angle) * dist, endY, -Math.cos(angle) * dist);
     this.hitFly = { from: from.clone(), to, t: 0, dur: clamp(dist / 34, 0.9, 2.0), peak, type };
     this.phase = "result";
     this.resultT = this.hitFly.dur + (type === "homer" ? 1.4 : 1.0);
@@ -886,6 +888,7 @@ export class BaseballGame {
             this.emit(ty === "homer" ? "homer" : "hit", { hitType: ty, homeScore: this.score.home, awayScore: this.score.away, team: this.battingTeam() });
             this.balls = 0; this.strikes = 0;
           } else if (ty === "flyout") {
+            this.ballMesh.visible = false; // 進了野手手套
             this.emit("flyout", {});
             this.balls = 0; this.strikes = 0;
             if (this.inningsMode()) this.registerOut();
