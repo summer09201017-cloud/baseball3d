@@ -1,0 +1,11 @@
+{
+  "name": "3D 棒球・主審視角",
+  "short_name": "3D棒球",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0c1322",
+  "theme_color": "#12321f",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
