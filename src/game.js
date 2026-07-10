@@ -110,17 +110,42 @@ export class BaseballGame {
     this.buildZone();
     this.buildPlayers();
 
-    // 球
+    // 球:真棒球縫線貼圖(兩道紅縫線+齒紋;07-10 使用者點名「球不像棒球」)
+    const ballTex = (() => {
+      const cv = document.createElement("canvas");
+      cv.width = 256; cv.height = 128;
+      const c = cv.getContext("2d");
+      c.fillStyle = "#f6f2e8";
+      c.fillRect(0, 0, 256, 128);
+      c.strokeStyle = "#c03a3a";
+      c.lineWidth = 3;
+      const seamY = (x, phase) => 64 + 30 * Math.sin((x / 256) * Math.PI * 2 + phase) * (phase === 0 ? 1 : -1) + (phase === 0 ? -22 : 22);
+      for (const phase of [0, Math.PI]) {
+        c.beginPath();
+        for (let x = 0; x <= 256; x += 4) {
+          const y = seamY(x, phase);
+          if (x === 0) c.moveTo(x, y); else c.lineTo(x, y);
+        }
+        c.stroke();
+        // 縫線齒紋(短斜線)
+        c.lineWidth = 2;
+        for (let x = 0; x <= 256; x += 9) {
+          const y = seamY(x, phase);
+          c.beginPath();
+          c.moveTo(x - 3, y - 4);
+          c.lineTo(x + 3, y + 4);
+          c.stroke();
+        }
+        c.lineWidth = 3;
+      }
+      const t = new THREE.CanvasTexture(cv);
+      t.wrapS = THREE.RepeatWrapping;
+      return t;
+    })();
     this.ballMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.16, 20, 20),
-      new THREE.MeshStandardMaterial({ color: 0xf6f2e8, roughness: 0.4 }),
+      new THREE.SphereGeometry(0.16, 24, 24),
+      new THREE.MeshStandardMaterial({ map: ballTex, roughness: 0.45 }),
     );
-    const seam = new THREE.Mesh(
-      new THREE.TorusGeometry(0.16, 0.02, 8, 32),
-      new THREE.MeshStandardMaterial({ color: 0xc04040 }),
-    );
-    seam.rotation.x = Math.PI / 3;
-    this.ballMesh.add(seam);
     this.ballMesh.visible = false;
     this.scene.add(this.ballMesh);
 
@@ -1153,6 +1178,8 @@ export class BaseballGame {
       const k = 1 - Math.exp(-dt * 2.6);
       this._camPos.lerp(targetPos, k);
       this._camLook.lerp(targetLook, k);
+      // 球自旋(飛行中)
+      if (this.ballMesh.visible) { this.ballMesh.rotation.x += dt * 9; this.ballMesh.rotation.z += dt * 3; }
       // 觀眾歡呼:整片看台輕彈
       this.crowdCheerT = Math.max(0, this.crowdCheerT - dt);
       this.crowdGroup.position.y = this.crowdCheerT > 0 ? Math.abs(Math.sin(this.crowdCheerT * 14)) * 0.45 : 0;
