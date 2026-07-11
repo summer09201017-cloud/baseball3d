@@ -73,10 +73,14 @@ const FIELD_CAM = { pos: new THREE.Vector3(0, 16.5, 17), look: new THREE.Vector3
 // 視角三檔(07-11 使用者拍板):投球半局可 V 切;打擊半局鎖主審(球飛向你才抓得準時機)
 const PITCHER_CAM = { pos: new THREE.Vector3(0.9, 2.35, -21.3), look: new THREE.Vector3(0, 1.0, 0.6) };
 const TOP_CAM = { pos: new THREE.Vector3(0, 33, -7.5), look: new THREE.Vector3(0, 0, -17) };
+const LEFT_CAM = { pos: new THREE.Vector3(-27, 9, -13), look: new THREE.Vector3(0, 0.8, -13) };
+const RIGHT_CAM = { pos: new THREE.Vector3(27, 9, -13), look: new THREE.Vector3(0, 0.8, -13) };
 const CAM_VIEWS = [
   { cam: PLATE_CAM, name: "主審視角" },
   { cam: PITCHER_CAM, name: "投手肩後視角" },
   { cam: TOP_CAM, name: "高空俯瞰" },
+  { cam: LEFT_CAM, name: "左側視角" },   // 07-11 使用者點名:三視角→五視角
+  { cam: RIGHT_CAM, name: "右側視角" },
 ];
 
 export class BaseballGame {
@@ -112,7 +116,7 @@ export class BaseballGame {
     this.camView = 0;
     try {
       const saved = Number(localStorage.getItem("bb3d-camview"));
-      if ([0, 1, 2].includes(saved)) this.camView = saved;
+      if ([0, 1, 2, 3, 4].includes(saved)) this.camView = saved;
     } catch { /* 私密模式等 */ }
 
     const hemi = new THREE.HemisphereLight(0xcfe4ff, 0x27401f, 1.05);
