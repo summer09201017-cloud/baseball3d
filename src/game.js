@@ -255,12 +255,24 @@ export class BaseballGame {
       stand.position.y = 2.6 + tier * 2.4;
       this.crowdGroup.add(stand);
     }
-    const crowdColors = [0xffd24a, 0xe05040, 0x38a9ff, 0x5ad06a, 0xf2d8b0, 0xd7a6ff, 0xff9a62];
-    const crowdGeo = new THREE.SphereGeometry(0.55, 6, 6);
-    const crowdMat = new THREE.MeshStandardMaterial({ roughness: 0.9 });
+    // 觀眾臉部鐵則(07-11 使用者拍板,racket3d 範式):膚色頭+彩衣身+眼白/瞳孔+嘴(微笑/歡呼O嘴輪替);環形看台逐人朝向球場中央(原點)
+    const palette = [0xffd24a, 0xe05040, 0x38a9ff, 0x5ad06a, 0xf2d8b0, 0xd7a6ff, 0xff9a62];
+    const skins = [0xf2c89a, 0xe6b183, 0xd9a06f];
     const N_CROWD = 540;
-    const crowd = new THREE.InstancedMesh(crowdGeo, crowdMat, N_CROWD);
-    const m4 = new THREE.Matrix4();
+    const cHeads = new THREE.InstancedMesh(new THREE.SphereGeometry(0.4, 8, 8), new THREE.MeshStandardMaterial({ roughness: 0.9 }), N_CROWD);
+    const cTorsos = new THREE.InstancedMesh(new THREE.BoxGeometry(0.56, 0.7, 0.38), new THREE.MeshStandardMaterial({ roughness: 1 }), N_CROWD);
+    const cEyes = new THREE.InstancedMesh(new THREE.SphereGeometry(0.076, 6, 6), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }), N_CROWD * 2);
+    const cPupils = new THREE.InstancedMesh(new THREE.SphereGeometry(0.038, 5, 5), new THREE.MeshStandardMaterial({ color: 0x1a1a1a }), N_CROWD * 2);
+    const cMouths = new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 6, 6), new THREE.MeshStandardMaterial({ color: 0x8a2e2e }), N_CROWD);
+    const cDummy = new THREE.Object3D();
+    const cPick = (a) => a[Math.floor(Math.random() * a.length)];
+    const cPut = (inst, idx, x, y, z, sx = 1, sy = 1, sz = 1, ry = 0) => {
+      cDummy.position.set(x, y, z);
+      cDummy.rotation.set(0, ry, 0);
+      cDummy.scale.set(sx, sy, sz);
+      cDummy.updateMatrix();
+      inst.setMatrixAt(idx, cDummy.matrix);
+    };
     for (let i = 0; i < N_CROWD; i++) {
       const tier = i % 3;
       const r = WALL_R + 3 + tier * 4 + rand(-0.8, 0.8);
@@ -269,13 +281,26 @@ export class BaseballGame {
       const x = Math.sin(phi) * r;
       const z = -Math.cos(phi) * r;
       const y = 4.1 + tier * 2.4 + rand(-0.2, 0.2);
-      m4.setPosition(x, y, z);
-      crowd.setMatrixAt(i, m4);
-      crowd.setColorAt(i, new THREE.Color(crowdColors[i % crowdColors.length]));
+      const rh = Math.hypot(x, z) || 1;
+      const fx = -x / rh, fz = -z / rh; // 朝球場中央
+      const px = -fz, pz = fx;          // 側向
+      const yaw = Math.atan2(fx, fz);
+      cPut(cHeads, i, x, y, z);
+      cHeads.setColorAt(i, new THREE.Color(cPick(skins)));
+      cPut(cTorsos, i, x, y - 0.7, z, 1, 1, 1, yaw);
+      cTorsos.setColorAt(i, new THREE.Color(cPick(palette)));
+      cPut(cEyes, i * 2, x + fx * 0.28 + px * 0.15, y + 0.08, z + fz * 0.28 + pz * 0.15);
+      cPut(cEyes, i * 2 + 1, x + fx * 0.28 - px * 0.15, y + 0.08, z + fz * 0.28 - pz * 0.15);
+      cPut(cPupils, i * 2, x + fx * 0.35 + px * 0.15, y + 0.08, z + fz * 0.35 + pz * 0.15);
+      cPut(cPupils, i * 2 + 1, x + fx * 0.35 - px * 0.15, y + 0.08, z + fz * 0.35 - pz * 0.15);
+      if (i % 2 === 0) cPut(cMouths, i, x + fx * 0.31, y - 0.13, z + fz * 0.31, 1.8, 0.45, 0.5, yaw);
+      else cPut(cMouths, i, x + fx * 0.32, y - 0.12, z + fz * 0.32, 0.8, 1.0, 0.8, yaw);
     }
-    crowd.instanceMatrix.needsUpdate = true;
-    if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
-    this.crowdGroup.add(crowd);
+    for (const inst of [cHeads, cTorsos, cEyes, cPupils, cMouths]) inst.instanceMatrix.needsUpdate = true;
+    if (cHeads.instanceColor) cHeads.instanceColor.needsUpdate = true;
+    if (cTorsos.instanceColor) cTorsos.instanceColor.needsUpdate = true;
+    this.crowd = cHeads;
+    this.crowdGroup.add(cHeads, cTorsos, cEyes, cPupils, cMouths);
     this.scene.add(this.crowdGroup);
     this.crowdCheerT = 0;
 
