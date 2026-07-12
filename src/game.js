@@ -373,46 +373,123 @@ export class BaseballGame {
   }
 
   // 小人(★臉部鐵則:眼睛+嘴巴;faceDir=頭面向 +z(朝鏡頭) or -z(朝投手))
+  // ★07-12 拍板:全系列人物統一「3D 射箭男生」(關節人物鐵則);棒球特例:隊色球帽蓋髮上、
+  // faceDir 只翻頭與腳掌(臂舉方向語義不變:捕手抬臂仍朝投手)。整體縮 0.62 維持球場比例。
   makePerson(color, { faceDir = 1, scale = 1 } = {}) {
     const g = new THREE.Group();
     const jersey = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
     const pants = new THREE.MeshStandardMaterial({ color: 0x3a3f52, roughness: 0.9 });
-    // 膚色帶自發光——臉轉到光的背面(打者面向鏡頭側)也看得清表情
     const skin = new THREE.MeshStandardMaterial({ color: 0xf2d8b0, roughness: 0.7, emissive: 0x8a7355, emissiveIntensity: 0.5 });
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.16), pants);
-    legL.position.set(-0.11, 0.25, 0);
-    const legR = legL.clone(); legR.position.x = 0.11;
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.55, 0.26), jersey);
-    torso.position.y = 0.78;
-    const armL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.42, 0.11), jersey);
-    armL.position.set(-0.3, 0.8, 0);
-    const armR = armL.clone(); armR.position.x = 0.3;
+    const dark = new THREE.MeshBasicMaterial({ color: 0x2a2018 });
+    const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+    const shoeMat = new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 0.85 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x2b2119, roughness: 0.85 });
+
+    const mkLimb = ({ upperMat, lowerMat, upperLen, lowerLen, upperR, lowerR, end, thumbSide = 1 }) => {
+      const pivot = new THREE.Group();
+      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(upperR, upperLen, 4, 8), upperMat);
+      upper.position.y = -upperLen / 2;
+      pivot.add(upper);
+      const joint = new THREE.Group();
+      joint.position.y = -upperLen;
+      pivot.add(joint);
+      const lower = new THREE.Mesh(new THREE.CapsuleGeometry(lowerR, lowerLen, 4, 8), lowerMat);
+      lower.position.y = -lowerLen / 2;
+      joint.add(lower);
+      if (end === "foot") {
+        const foot = new THREE.Mesh(new THREE.BoxGeometry(lowerR * 2.1, lowerR, lowerR * 3.4), shoeMat);
+        foot.position.set(0, -lowerLen - lowerR * 0.4, lowerR * 0.9);
+        joint.add(foot);
+      } else {
+        const r = lowerR;
+        const hand = new THREE.Group();
+        hand.position.y = -lowerLen - r * 0.2;
+        const palm = new THREE.Mesh(new THREE.BoxGeometry(r * 2.2, r * 1.7, r * 1.0), skin);
+        palm.position.y = -r * 0.85;
+        hand.add(palm);
+        for (let fi = 0; fi < 4; fi += 1) {
+          const finger = new THREE.Mesh(new THREE.BoxGeometry(r * 0.44, r * 1.25, r * 0.55), skin);
+          finger.position.set((fi - 1.5) * r * 0.54, -r * 2.1, 0);
+          finger.rotation.x = 0.14;
+          hand.add(finger);
+        }
+        const thumb = new THREE.Mesh(new THREE.BoxGeometry(r * 0.5, r * 1.0, r * 0.55), skin);
+        thumb.position.set(thumbSide * r * 1.3, -r * 0.95, r * 0.1);
+        thumb.rotation.z = thumbSide * -0.55;
+        hand.add(thumb);
+        joint.add(hand);
+      }
+      return { pivot, joint };
+    };
+
+    const chest = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.34, 6, 12), jersey);
+    chest.position.y = 1.3;
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.2, 12), skin);
+    neck.position.y = 1.76;
+    const waist = new THREE.Group();
+    waist.position.y = 1.04;
+    const belly = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.21, 0.3, 14), jersey);
+    belly.position.y = -0.05;
+    const hip = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.235, 0.2, 14), pants);
+    hip.position.y = -0.26;
+    const beltLine = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.06, 14), new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 0.6 }));
+    beltLine.position.y = -0.15;
+    waist.add(belly, hip, beltLine);
+
     const head = new THREE.Group();
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 16), skin);
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.25, 18, 18), skin);
+    const earL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 10), skin);
+    earL.scale.set(0.45, 1, 0.8);
+    earL.position.set(-0.245, -0.01, 0);
+    const earR = earL.clone();
+    earR.position.x = 0.245;
+    const hairCap = new THREE.Mesh(new THREE.SphereGeometry(0.265, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.46), hairMat);
+    hairCap.position.y = 0.01;
+    hairCap.rotation.x = -0.22;
+    const hairBack = new THREE.Mesh(new THREE.SphereGeometry(0.255, 16, 8, Math.PI, Math.PI, Math.PI * 0.35, Math.PI * 0.22), hairMat);
+    const eL = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10), white); eL.position.set(-0.09, 0.06, 0.21);
+    const eR = eL.clone(); eR.position.x = 0.09;
+    const pL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), dark); pL.position.set(-0.09, 0.06, 0.25);
+    const pR = pL.clone(); pR.position.x = 0.09;
+    const bL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.02, 0.02), dark); bL.position.set(-0.09, 0.14, 0.22); bL.rotation.z = 0.18;
+    const bR = bL.clone(); bR.position.x = 0.09; bR.rotation.z = -0.18;
+    const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.014, 8, 14, Math.PI), dark);
+    mouth.position.set(0, -0.08, 0.21);
+    mouth.rotation.z = Math.PI;
+    head.add(skull, earL, earR, hairCap, hairBack, eL, eR, pL, pR, bL, bR, mouth);
+    head.position.y = 2.0;
+    // 隊色球帽(蓋在髮上)+帽簷
     const capMat = new THREE.MeshStandardMaterial({ color });
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.175, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), capMat);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.275, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), capMat);
     cap.position.y = 0.03;
-    // 臉:白眼珠+黑瞳孔+眉毛+微笑弧(07-10 使用者點名要有表情;貼在面向側)
-    const darkMat = new THREE.MeshBasicMaterial({ color: 0x2a2018 });
-    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const scleraL = new THREE.Mesh(new THREE.SphereGeometry(0.034, 10, 10), whiteMat);
-    scleraL.position.set(-0.06, 0.02, 0.148 * faceDir);
-    const scleraR = scleraL.clone(); scleraR.position.x = 0.06;
-    const pupilL = new THREE.Mesh(new THREE.SphereGeometry(0.017, 8, 8), darkMat);
-    pupilL.position.set(-0.06, 0.02, 0.178 * faceDir);
-    const pupilR = pupilL.clone(); pupilR.position.x = 0.06;
-    const browL = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.013, 0.016), darkMat);
-    browL.position.set(-0.06, 0.078, 0.152 * faceDir);
-    browL.rotation.z = 0.2 * faceDir;
-    const browR = browL.clone(); browR.position.x = 0.06; browR.rotation.z = -0.2 * faceDir;
-    const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.009, 8, 14, Math.PI), darkMat);
-    mouth.position.set(0, -0.045, 0.155 * faceDir);
-    mouth.rotation.z = Math.PI; // 弧口朝上=微笑
-    head.add(skull, cap, scleraL, scleraR, pupilL, pupilR, browL, browR, mouth);
-    head.position.y = 1.22;
-    g.add(legL, legR, torso, armL, armR, head);
-    g.scale.setScalar(scale);
-    g.userData = { head, armR, armL, jerseyMats: [jersey, capMat] };
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.03, 12, 1, false, -Math.PI / 2, Math.PI), capMat);
+    brim.position.set(0, 0.05, 0.24);
+    head.add(cap, brim);
+    // faceDir=-1:翻頭(臉+髮+帽)朝 -z
+    head.rotation.y = faceDir === 1 ? 0 : Math.PI;
+
+    const legLimbL = mkLimb({ upperMat: pants, lowerMat: pants, upperLen: 0.34, lowerLen: 0.32, upperR: 0.09, lowerR: 0.072, end: "foot" });
+    legLimbL.pivot.position.set(-0.15, 0.88, 0);
+    legLimbL.joint.rotation.x = 0.08;
+    const legLimbR = mkLimb({ upperMat: pants, lowerMat: pants, upperLen: 0.34, lowerLen: 0.32, upperR: 0.09, lowerR: 0.072, end: "foot" });
+    legLimbR.pivot.position.set(0.15, 0.88, 0);
+    legLimbR.joint.rotation.x = 0.08;
+    // 腳掌跟著臉的方向
+    if (faceDir === -1) {
+      legLimbL.pivot.rotation.y = Math.PI;
+      legLimbR.pivot.rotation.y = Math.PI;
+    }
+    const armLimbL = mkLimb({ upperMat: jersey, lowerMat: skin, upperLen: 0.27, lowerLen: 0.26, upperR: 0.07, lowerR: 0.058, end: "hand", thumbSide: 1 });
+    armLimbL.pivot.position.set(-0.4, 1.6, 0);
+    armLimbL.joint.rotation.x = -0.25;
+    const armLimbR = mkLimb({ upperMat: jersey, lowerMat: skin, upperLen: 0.27, lowerLen: 0.26, upperR: 0.07, lowerR: 0.058, end: "hand", thumbSide: -1 });
+    armLimbR.pivot.position.set(0.4, 1.6, 0);
+    armLimbR.joint.rotation.x = -0.25;
+
+    g.add(chest, neck, waist, head, armLimbL.pivot, armLimbR.pivot, legLimbL.pivot, legLimbR.pivot);
+    g.scale.setScalar(scale * 0.62); // 新人物較高,縮回原比例
+    g.userData = { head, armR: armLimbR.pivot, armL: armLimbL.pivot, jerseyMats: [jersey, capMat] };
     return g;
   }
 
