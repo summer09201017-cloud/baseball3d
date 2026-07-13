@@ -423,17 +423,17 @@ export class BaseballGame {
       return { pivot, joint };
     };
 
-    const chest = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.34, 6, 12), jersey);
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.76, 0.32) /* 矩形身體(07-13 鐵則) */, jersey);
     chest.position.y = 1.3;
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.2, 12), skin);
     neck.position.y = 1.76;
     const waist = new THREE.Group();
     waist.position.y = 1.04;
-    const belly = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.21, 0.3, 14), jersey);
+    const belly = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.3, 0.27), jersey);
     belly.position.y = -0.05;
-    const hip = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.235, 0.2, 14), pants);
+    const hip = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.2, 0.27), pants);
     hip.position.y = -0.26;
-    const beltLine = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.06, 14), new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 0.6 }));
+    const beltLine = new THREE.Mesh(new THREE.BoxGeometry(0.43, 0.06, 0.28), new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 0.6 }));
     beltLine.position.y = -0.15;
     waist.add(belly, hip, beltLine);
 
