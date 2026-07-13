@@ -424,11 +424,11 @@ export class BaseballGame {
     };
 
     const chest = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.76, 0.32) /* 矩形身體(07-13 鐵則) */, jersey);
-    chest.position.y = 1.3;
+    chest.position.y = 1.42;
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.2, 12), skin);
-    neck.position.y = 1.76;
+    neck.position.y = 1.88;
     const waist = new THREE.Group();
-    waist.position.y = 1.04;
+    waist.position.y = 1.16;
     const belly = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.3, 0.27), jersey);
     belly.position.y = -0.05;
     const hip = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.2, 0.27), pants);
@@ -458,7 +458,7 @@ export class BaseballGame {
     mouth.position.set(0, -0.08, 0.21);
     mouth.rotation.z = Math.PI;
     head.add(skull, earL, earR, hairCap, hairBack, eL, eR, pL, pR, bL, bR, mouth);
-    head.position.y = 2.0;
+    head.position.y = 2.12;
     // 隊色球帽(蓋在髮上)+帽簷
     const capMat = new THREE.MeshStandardMaterial({ color });
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.275, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), capMat);
@@ -469,11 +469,11 @@ export class BaseballGame {
     // faceDir=-1:翻頭(臉+髮+帽)朝 -z
     head.rotation.y = faceDir === 1 ? 0 : Math.PI;
 
-    const legLimbL = mkLimb({ upperMat: pants, lowerMat: pants, upperLen: 0.34, lowerLen: 0.32, upperR: 0.09, lowerR: 0.072, end: "foot" });
-    legLimbL.pivot.position.set(-0.15, 0.88, 0);
+    const legLimbL = mkLimb({ upperMat: pants, lowerMat: pants, upperLen: 0.40, lowerLen: 0.38, upperR: 0.09, lowerR: 0.072, end: "foot" });
+    legLimbL.pivot.position.set(-0.15, 1.0, 0);
     legLimbL.joint.rotation.x = 0.08;
-    const legLimbR = mkLimb({ upperMat: pants, lowerMat: pants, upperLen: 0.34, lowerLen: 0.32, upperR: 0.09, lowerR: 0.072, end: "foot" });
-    legLimbR.pivot.position.set(0.15, 0.88, 0);
+    const legLimbR = mkLimb({ upperMat: pants, lowerMat: pants, upperLen: 0.40, lowerLen: 0.38, upperR: 0.09, lowerR: 0.072, end: "foot" });
+    legLimbR.pivot.position.set(0.15, 1.0, 0);
     legLimbR.joint.rotation.x = 0.08;
     // 腳掌跟著臉的方向
     if (faceDir === -1) {
@@ -481,10 +481,10 @@ export class BaseballGame {
       legLimbR.pivot.rotation.y = Math.PI;
     }
     const armLimbL = mkLimb({ upperMat: jersey, lowerMat: skin, upperLen: 0.27, lowerLen: 0.26, upperR: 0.07, lowerR: 0.058, end: "hand", thumbSide: 1 });
-    armLimbL.pivot.position.set(-0.4, 1.6, 0);
+    armLimbL.pivot.position.set(-0.4, 1.72, 0);
     armLimbL.joint.rotation.x = -0.25;
     const armLimbR = mkLimb({ upperMat: jersey, lowerMat: skin, upperLen: 0.27, lowerLen: 0.26, upperR: 0.07, lowerR: 0.058, end: "hand", thumbSide: -1 });
-    armLimbR.pivot.position.set(0.4, 1.6, 0);
+    armLimbR.pivot.position.set(0.4, 1.72, 0);
     armLimbR.joint.rotation.x = -0.25;
 
     g.add(chest, neck, waist, head, armLimbL.pivot, armLimbR.pivot, legLimbL.pivot, legLimbR.pivot);
