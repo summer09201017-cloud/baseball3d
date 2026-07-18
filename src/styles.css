@@ -64,7 +64,7 @@ body {
   background: rgba(10, 16, 30, 0.7); font-size: 14px; z-index: 20; text-align: center;
 }
 .commentary-bar {
-  position: fixed; left: 50%; top: 68px; transform: translateX(-50%);
+  position: fixed; left: 50%; top: 96px; /* 07-18:移到記分板下方 */ transform: translateX(-50%);
   max-width: min(86vw, 640px); padding: 8px 18px; border-radius: 999px;
   background: rgba(10, 14, 26, 0.85); border: 1px solid #ffe070;
   color: #f5f8ff; font-size: 17px; font-weight: 700; letter-spacing: 0.04em;
@@ -154,7 +154,7 @@ body {
   .mode-grid { grid-template-columns: 1fr; }
   .count-panel { bottom: 120px; }
   .pitch-panel { bottom: 120px; max-width: 250px; font-size: 12px; }
-  .commentary-bar { top: 58px; font-size: 14px; }
+  .commentary-bar { top: 88px; font-size: 14px; }
   .team-score { font-size: 24px; }
 }
 
@@ -163,3 +163,6 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.25);
   background: #101a2e; color: #ffe070; font-size: 15px; font-weight: 700; text-align: center;
 }
+
+/* 防疫(07-18 批次):殼層面板 display:flex 會蓋過 UA 的 [hidden]{display:none} */
+[hidden] { display: none !important; }
