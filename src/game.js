@@ -535,7 +535,9 @@ export class BaseballGame {
     this.batterMesh.position.set(1.15 * side, 0, 0.35);
     this.batterMesh.rotation.y = (Math.PI / 2) * side * 0.92; // 側身面向本壘
     const head = this.batterMesh.userData.head;
-    if (head) head.rotation.y = side * 0.7; // 頭轉向好球帶——主審視角看得到眼睛嘴巴表情(07-10 使用者點名)
+    // ★07-18 修:原 side*0.7 蓋掉了 faceDir=-1 的 π 翻頭基準 → 左打臉朝外(背對本壘)。
+    //   -side*2.2 = 兩側都「臉朝好球帶+微向主審鏡頭」(左打朝畫面右、右打朝畫面左)。
+    if (head) head.rotation.y = -side * 2.2;
   }
 
   buildDefense() {
