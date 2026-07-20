@@ -11,6 +11,7 @@
 // ★人物臉部鐵則:投手/打者/野手/跑者都有眼睛與嘴巴。
 
 import * as THREE from "three";
+import { animateIdleHead, animateCrowdCheer, EAR_SAFE_PHI } from "./idle-life.js";
 
 export const DIFFICULTY_LABELS = {
   kids: "幼兒",
@@ -304,6 +305,28 @@ export class BaseballGame {
     this.scene.add(this.crowdGroup);
     this.crowdCheerT = 0;
 
+    // 前排真人偶觀眾:舉手歡呼人浪+左右看(animateCrowdCheer 驅動;instanced 540 為背景靜態底)
+    this.crowdFigures = [];
+    const N_FANS = 40;
+    for (let i = 0; i < N_FANS; i++) {
+      // 沿看台弧線(-43°~+43°)決定性均布,不用 Math.random
+      const t = N_FANS > 1 ? i / (N_FANS - 1) : 0.5;
+      const phi = -Math.PI / 4 * 0.9 + Math.PI / 2 * 0.9 * t;
+      const r = WALL_R + 1.6; // 站在牆後第一排(最靠球場,看得最清楚)
+      const x = Math.sin(phi) * r;
+      const z = -Math.cos(phi) * r;
+      const yaw = Math.atan2(-x, -z); // 面朝球場中央(原點)
+      const fan = this.makeCrowdFan(cPick(palette), cPick(skins));
+      const rigY = 3.5;
+      fan.rig.position.set(x, rigY, z);
+      fan.rig.rotation.y = yaw;
+      fan.rig.scale.setScalar(0.95);
+      this.crowdGroup.add(fan.rig);
+      // 相位=座號×0.9 + 對側偏移(決定性)→ 此起彼落的人浪
+      const phase = i * 0.9 + (x < 0 ? 0 : 1.7);
+      this.crowdFigures.push({ fig: fan, phase, rigY });
+    }
+
     // 後方大計分板(07-10 使用者點名):9 局逐局計分+壘上有人菱形燈+B/S/O
     this.sbCanvas = document.createElement("canvas");
     this.sbCanvas.width = 1024; this.sbCanvas.height = 384;
@@ -437,7 +460,11 @@ export class BaseballGame {
     beltLine.position.y = -0.15;
     waist.add(belly, hip, beltLine);
 
+    // ★idle 生動:head=朝向樞紐(faceDir/打擊區 rotation.y),內層 headGroup=idle 轉頭樞紐(基準 0);
+    //   臉/髮/帽全收進 headGroup(局部座標=相對頭中心 y2.12,群組前後視覺零位移)。
     const head = new THREE.Group();
+    const headGroup = new THREE.Group();
+    head.add(headGroup);
     const skull = new THREE.Mesh(new THREE.SphereGeometry(0.25, 18, 18), skin);
     const earL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 10), skin);
     earL.scale.set(0.45, 1, 0.8);
@@ -447,7 +474,8 @@ export class BaseballGame {
     const hairCap = new THREE.Mesh(new THREE.SphereGeometry(0.265, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.46), hairMat);
     hairCap.position.y = 0.01;
     hairCap.rotation.x = -0.22;
-    const hairBack = new THREE.Mesh(new THREE.SphereGeometry(0.255, 16, 8, Math.PI, Math.PI, Math.PI * 0.35, Math.PI * 0.22), hairMat);
+    // 耳前無髮鐵律:後腦髮片 phi 只覆蓋耳後半球(EAR_SAFE_PHI),兩鬢/耳前露臉頰+耳朵
+    const hairBack = new THREE.Mesh(new THREE.SphereGeometry(0.255, 16, 8, EAR_SAFE_PHI.start, EAR_SAFE_PHI.end - EAR_SAFE_PHI.start, Math.PI * 0.35, Math.PI * 0.22), hairMat);
     const eL = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10), white); eL.position.set(-0.09, 0.06, 0.21);
     const eR = eL.clone(); eR.position.x = 0.09;
     const pL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), dark); pL.position.set(-0.09, 0.06, 0.25);
@@ -457,7 +485,7 @@ export class BaseballGame {
     const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.014, 8, 14, Math.PI), dark);
     mouth.position.set(0, -0.08, 0.21);
     mouth.rotation.z = Math.PI;
-    head.add(skull, earL, earR, hairCap, hairBack, eL, eR, pL, pR, bL, bR, mouth);
+    headGroup.add(skull, earL, earR, hairCap, hairBack, eL, eR, pL, pR, bL, bR, mouth);
     head.position.y = 2.12;
     // 隊色球帽(蓋在髮上)+帽簷
     const capMat = new THREE.MeshStandardMaterial({ color });
@@ -465,7 +493,7 @@ export class BaseballGame {
     cap.position.y = 0.03;
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.03, 12, 1, false, -Math.PI / 2, Math.PI), capMat);
     brim.position.set(0, 0.05, 0.24);
-    head.add(cap, brim);
+    headGroup.add(cap, brim);
     // faceDir=-1:翻頭(臉+髮+帽)朝 -z
     head.rotation.y = faceDir === 1 ? 0 : Math.PI;
 
@@ -489,8 +517,61 @@ export class BaseballGame {
 
     g.add(chest, neck, waist, head, armLimbL.pivot, armLimbR.pivot, legLimbL.pivot, legLimbR.pivot);
     g.scale.setScalar(scale * 0.62); // 新人物較高,縮回原比例
-    g.userData = { head, armR: armLimbR.pivot, armL: armLimbL.pivot, jerseyMats: [jersey, capMat] };
+    // headGroup=idle 轉頭樞紐、smile=可放大的笑弧(animateIdleHead 用);head=朝向樞紐(applyBatSide 用)
+    g.userData = { head, headGroup, smile: mouth, armR: armLimbR.pivot, armL: armLimbL.pivot, jerseyMats: [jersey, capMat] };
     return g;
+  }
+
+  // 前排真人偶觀眾(舉手歡呼人浪用;instanced 大群為背景靜態底)——頭臉群組+雙臂 pivot 在肩,供 animateCrowdCheer 驅動
+  makeCrowdFan(jerseyColor, skinColor) {
+    const rig = new THREE.Group();
+    const skin = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.85 });
+    const jersey = new THREE.MeshStandardMaterial({ color: jerseyColor, roughness: 1 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x2b2119, roughness: 0.9 });
+    const dark = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
+    const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    // 身軀
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.74, 0.36), jersey);
+    torso.position.y = 0.92;
+    // 頭臉群組(樞紐=頭中心 y=1.5;基準朝 +z,facing 交給 rig.rotation.y)
+    const HC = 1.5;
+    const H = (y) => y - HC;
+    const headGroup = new THREE.Group();
+    headGroup.position.y = HC;
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.27, 14, 14), skin);
+    skull.position.y = H(HC);
+    const earL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), skin);
+    earL.scale.set(0.45, 1, 0.8); earL.position.set(-0.265, H(HC - 0.01), 0);
+    const earR = earL.clone(); earR.position.x = 0.265;
+    // 髮:頭頂冠(全 phi 但只在耳上冠部)+ 後腦髮片(EAR_SAFE_PHI=耳前無髮)
+    const hairCap = new THREE.Mesh(new THREE.SphereGeometry(0.285, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.44), hairMat);
+    hairCap.position.y = H(HC + 0.02);
+    const hairBack = new THREE.Mesh(new THREE.SphereGeometry(0.278, 16, 8, EAR_SAFE_PHI.start, EAR_SAFE_PHI.end - EAR_SAFE_PHI.start, Math.PI * 0.34, Math.PI * 0.26), hairMat);
+    hairBack.position.y = H(HC);
+    const eL = new THREE.Mesh(new THREE.SphereGeometry(0.052, 8, 8), white); eL.position.set(-0.1, H(HC + 0.05), 0.23);
+    const eR = eL.clone(); eR.position.x = 0.1;
+    const pL = new THREE.Mesh(new THREE.SphereGeometry(0.027, 6, 6), dark); pL.position.set(-0.1, H(HC + 0.05), 0.265);
+    const pR = pL.clone(); pR.position.x = 0.1;
+    const smile = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.018, 6, 12, Math.PI), dark);
+    smile.position.set(0, H(HC - 0.1), 0.23); smile.rotation.z = Math.PI;
+    headGroup.add(skull, earL, earR, hairCap, hairBack, eL, eR, pL, pR, smile);
+    // 雙臂(pivot 在肩;上臂朝下,animateCrowdCheer 以 rotation.x 舉起過頭)
+    const mkArm = (sx) => {
+      const pivot = new THREE.Group();
+      pivot.position.set(sx * 0.34, 1.28, 0);
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.056, 0.36, 8), jersey);
+      upper.position.y = -0.18; pivot.add(upper);
+      const joint = new THREE.Group(); joint.position.y = -0.36; pivot.add(joint);
+      const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.046, 0.32, 8), skin);
+      fore.position.y = -0.16; joint.add(fore);
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), skin);
+      hand.position.y = -0.34; joint.add(hand);
+      pivot.rotation.x = -0.5; // 預設放下(animateCrowdCheer 會每幀覆寫)
+      return { pivot, joint };
+    };
+    const leftArm = mkArm(-1), rightArm = mkArm(1);
+    rig.add(torso, headGroup, leftArm.pivot, rightArm.pivot);
+    return { rig, headGroup, leftArm, rightArm, smile };
   }
 
   buildPlayers() {
@@ -1391,6 +1472,17 @@ export class BaseballGame {
       this._camLook.lerp(targetLook, k);
       // 球自旋(飛行中)
       if (this.ballMesh.visible) { this.ballMesh.rotation.x += dt * 9; this.ballMesh.rotation.z += dt * 3; }
+      // idle 生動:時間累加(決定性,可重播)
+      this.time = (this.time || 0) + dt;
+      // 主角頭部生動(打者/投手/捕手偶爾平滑轉頭看一下+微笑;各給不同相位/週期錯開)
+      const bu = this.batterMesh && this.batterMesh.userData;
+      const pu = this.pitcherMesh && this.pitcherMesh.userData;
+      const cu = this.catcherMesh && this.catcherMesh.userData;
+      if (bu) animateIdleHead(bu.headGroup, bu.smile, this.time, { phase: 0.4, period: 5.6 });
+      if (pu) animateIdleHead(pu.headGroup, pu.smile, this.time, { phase: 2.7, period: 6.3 });
+      if (cu) animateIdleHead(cu.headGroup, cu.smile, this.time, { phase: 4.5, period: 5.1 });
+      // 觀眾舉手歡呼人浪+左右看
+      animateCrowdCheer(this.crowdFigures, this.time);
       // 觀眾歡呼:整片看台輕彈
       this.crowdCheerT = Math.max(0, this.crowdCheerT - dt);
       this.crowdGroup.position.y = this.crowdCheerT > 0 ? Math.abs(Math.sin(this.crowdCheerT * 14)) * 0.45 : 0;

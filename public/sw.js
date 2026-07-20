@@ -1,5 +1,5 @@
 // 簡易 SW:code network-first、其餘 cache-first
-const CACHE = "baseball3d-v3";
+const CACHE = "baseball3d-v4";
 self.addEventListener("install", (e) => { self.skipWaiting(); });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))));
