@@ -199,6 +199,10 @@ function handleGameEvent(event) {
       ui.overlayText.textContent = event.text;
       ui.matchOverlay.classList.add("visible");
       pushCommentary(event.title, "info", "比賽結束!");
+      try { if (!['localhost','127.0.0.1'].includes(location.hostname)) {   // -done:玩完一局(t=本局秒數,/stats 使用次數與平均停留吃這個)
+        var __dt = Math.round((Date.now() - (window.__matchT0 || Date.now())) / 1000);
+        navigator.sendBeacon?.('https://hfpc-play-stats.summer09201017.workers.dev/api/ping?g=baseball3d-done&t=' + __dt);
+      } } catch (_) {}
       break;
     default:
       break;
@@ -266,6 +270,7 @@ ui.audioSelect.addEventListener("change", (e) => {
 });
 syncCountInputs();
 ui.startMatchButton.addEventListener("click", () => {
+  window.__matchT0 = Date.now();   // -done beacon 用:本局開始時間
   audio.unlock(); audio.uiTap();
   const pitchCount = Math.max(1, Math.min(30, parseInt(ui.pitchCountInput.value, 10) || 10));
   const innings = Math.max(1, Math.min(9, parseInt(ui.inningsInput.value, 10) || 3));
